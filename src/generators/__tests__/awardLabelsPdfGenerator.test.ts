@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { PDFDocument } from 'pdf-lib';
-import { generateAwardLabelsPdf } from '../awardLabelsPdfGenerator';
+import { generateLabelsPdf } from '../awardLabelsPdfGenerator';
 import type { AwardLabel } from '../../types';
 
 // ── Fixture helpers ───────────────────────────────────────────────────────────
@@ -28,16 +28,16 @@ function makeLabels(count: number): AwardLabel[] {
 }
 
 async function loadPages(labels: AwardLabel[]): Promise<number> {
-  const bytes = await generateAwardLabelsPdf(labels);
+  const bytes = await generateLabelsPdf(labels);
   const doc = await PDFDocument.load(bytes);
   return doc.getPageCount();
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-describe('generateAwardLabelsPdf', () => {
+describe('generateLabelsPdf', () => {
   it('returns a Uint8Array with a valid PDF header', async () => {
-    const bytes = await generateAwardLabelsPdf(makeLabels(1));
+    const bytes = await generateLabelsPdf(makeLabels(1));
     expect(bytes).toBeInstanceOf(Uint8Array);
     expect(new TextDecoder().decode(bytes.slice(0, 5))).toBe('%PDF-');
   });
@@ -67,7 +67,7 @@ describe('generateAwardLabelsPdf', () => {
   });
 
   it('each page is US letter size (612 × 792 pts)', async () => {
-    const bytes = await generateAwardLabelsPdf(makeLabels(31));
+    const bytes = await generateLabelsPdf(makeLabels(31));
     const doc = await PDFDocument.load(bytes);
     for (let i = 0; i < doc.getPageCount(); i++) {
       const { width, height } = doc.getPage(i).getSize();

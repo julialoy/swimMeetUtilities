@@ -3,9 +3,10 @@ import { FileUpload } from './components/FileUpload';
 import { parseCsv } from './parsers/csvParser';
 import { parseHy3, type Hy3ParseResult } from './parsers/hy3TmResultsParser';
 import { parseAwardLabelsPdf } from './parsers/awardLabelsParser';
-import { generateAwardLabelsPdf } from './generators/awardLabelsPdfGenerator';
-import { sortAwardLabels, type SortKey } from './utils/awardLabelSort';
-import type { AwardLabel } from './types';
+import { parseAnyLabelsPdf } from './parsers/labelParser';
+import { generateLabelsPdf } from './generators/awardLabelsPdfGenerator';
+import { sortLabels, type SortKey } from './utils/awardLabelSort';
+import type { AwardLabel, Label } from './types';
 
 /**
  * Discriminated union representing the result of a file parse operation.
@@ -30,26 +31,17 @@ export default function App() {
   const [generating, setGenerating] = useState(false);
 
   // ── Combine & Reorder state ────────────────────────────────────────────────
-  type UploadedPdf = { name: string; labels: AwardLabel[]; errors: string[] };
+  type UploadedPdf = { name: string; labels: Label[]; errors: string[] };
   const [uploadedPdfs, setUploadedPdfs] = useState<UploadedPdf[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [combining, setCombining] = useState(false);
   const combineInputRef = useRef<HTMLInputElement>(null);
 
-  /**
-   * Handles a file selected or dropped by the user.
-   *
-   * Determines the correct parser by file extension, awaits the parse,
-   * then stores the typed result in state for rendering.
-   * Unsupported extensions produce an `'error'` result variant.
-   *
-   * @param file - The raw `File` object from the upload widget.
-   */
   async function handleAddPdfs(files: FileList) {
     setCombining(true);
     const results = await Promise.all(
       Array.from(files).map(async (f) => {
-        const parsed = await parseAwardLabelsPdf(f);
+        const parsed = await parseAnyLabelsPdf(f);
         return { name: f.name, ...parsed };
       })
     );
@@ -60,15 +52,15 @@ export default function App() {
   async function handleCombineDownload() {
     setCombining(true);
     const merged = uploadedPdfs.flatMap(p => p.labels);
-    const sorted = sortAwardLabels(merged, sortKey);
-    const bytes = await generateAwardLabelsPdf(sorted);
-    triggerDownload(bytes, `award_labels_combined_${sortKey}.pdf`);
+    const sorted = sortLabels(merged, sortKey);
+    const bytes = await generateLabelsPdf(sorted);
+    triggerDownload(bytes, `labels_combined_${sortKey}.pdf`);
     setCombining(false);
   }
 
   async function handleDownload(labels: AwardLabel[], fileName: string) {
     setGenerating(true);
-    const bytes = await generateAwardLabelsPdf(labels);
+    const bytes = await generateLabelsPdf(labels);
     triggerDownload(bytes, fileName.replace(/\.pdf$/i, '_regenerated.pdf'));
     setGenerating(false);
   }

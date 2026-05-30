@@ -13,10 +13,11 @@ Each parser accepts a browser `File` object and returns a typed result object. A
 | `swimTopiaParser.ts` | SwimTopia athlete report card `.csv` → athlete/event summaries |
 | `pdfParser.ts` | Generic PDF → plain text (not column-aware; for simple PDFs) |
 | `pdfLabelUtils.ts` | Shared column-reconstruction utilities for Avery 8160 label PDFs |
-| `awardLabelsParser.ts` | Award labels PDF → `AwardLabel[]` |
+| `awardLabelsParser.ts` | Award labels PDF → `AwardLabel[]` (thin wrapper around `parseLabelsPdf`) |
 | `awardLabelLineParser.ts` | Pure line-parsing logic for award labels (no pdfjs-dist dependency) |
-| `improvementLabelsParser.ts` | Improvement/personal-best labels PDF → `ImprovementLabel[]` |
+| `improvementLabelsParser.ts` | Improvement/personal-best labels PDF → `ImprovementLabel[]` (thin wrapper around `parseLabelsPdf`) |
 | `improvementLabelLineParser.ts` | Pure line-parsing logic for improvement labels (no pdfjs-dist dependency) |
+| `labelParser.ts` | Auto-detecting label PDF parser → `Label[]` (single pdfjs-dist pass, handles both types) |
 
 ---
 
@@ -94,7 +95,7 @@ Parses an **Avery 8160 award labels PDF** (3 columns × 10 rows per US letter pa
 {meetName}
 ```
 
-Uses `pdfLabelUtils` to reconstruct column order from x/y position data, then delegates line parsing to `awardLabelLineParser.parseLabelLines`.
+Thin wrapper around `parseLabelsPdf` — supplies the `PLACE_LINE_RE` boundary predicate and `awardLabelLineParser.parseLabelLines`.
 
 ```ts
 const { labels, errors } = await parseAwardLabelsPdf(file);
@@ -115,11 +116,24 @@ Personal Best: {time} ({improvement})
 {meetName}
 ```
 
-Note the different line order from award labels — the event line is first, which is also the block boundary marker. Delegates line parsing to `improvementLabelLineParser.parseLabelLines`.
+Note the different line order from award labels — the event line is first, which is also the block boundary marker. Thin wrapper around `parseLabelsPdf` — supplies the `EVENT_START_RE` boundary predicate and `improvementLabelLineParser.parseLabelLines`.
 
 ```ts
 const { labels, errors } = await parseImprovementLabelsPdf(file);
 // labels: ImprovementLabel[]
+```
+
+---
+
+### `labelParser.ts` — `parseAnyLabelsPdf(file)`
+
+Parses any Avery 8160 label PDF in a **single pdfjs-dist pass**, auto-detecting whether each label block is an award label or improvement label by matching against both boundary patterns and trying both line parsers. A single PDF may contain a mix of both label types.
+
+Use this instead of calling both typed parsers separately — it avoids redundant PDF loading and reconstruction work.
+
+```ts
+const { labels, errors } = await parseAnyLabelsPdf(file);
+// labels: Label[]  (AwardLabel | ImprovementLabel)
 ```
 
 ---
@@ -136,14 +150,17 @@ Column-reconstruction helpers shared by both label parsers. Avery 8160 labels on
 | `getColumn(x)` | Maps an x-coordinate to column index 0, 1, or 2 |
 | `toPhysicalLines(items)` | Groups items into top-to-bottom lines, split into 3 column buckets |
 | `toBlocks(lines, isBoundary)` | Splits lines into label-row blocks using a per-column predicate |
+| `parseLabelsPdf<T>(file, isBoundary, parseLines)` | Complete single-pass parsing pipeline; used by all label parsers |
 
-`toBlocks` accepts an `isBoundary` predicate so each label parser can define its own first-line pattern:
+`toBlocks` and `parseLabelsPdf` accept an `isBoundary` predicate so each parser defines its own first-line pattern:
 - Award labels: `/\b\w+\s+Place\s+Time:/i` (place/time line is first)
 - Improvement labels: `/^#\w+\s+/` (event number line is first)
 
+Note: a combined boundary cannot be used for mixed-type detection because award labels contain a `#event` line as their *second* line, which would be mistaken for an improvement-label boundary. `labelParser` avoids this by detecting type once from the first page and applying a single-type boundary for the whole file.
+
 ### `awardLabelLineParser.ts` / `improvementLabelLineParser.ts`
 
-Pure functions with no pdfjs-dist dependency.
+Pure functions with no pdfjs-dist dependency. Called by their respective typed parsers and by `labelParser.ts` (which tries both in sequence for auto-detection).
 
 ```ts
 parseLabelLines(lines: string[]): AwardLabel | null

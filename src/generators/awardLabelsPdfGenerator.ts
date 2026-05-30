@@ -1,5 +1,5 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import type { AwardLabel } from '../types';
+import type { Label } from '../types';
 
 // ── Avery 8160 layout constants (US Letter, PDF points: 1" = 72 pts) ─────────
 
@@ -33,11 +33,20 @@ const PAD_LEFT     = 4;   // pts from label left edge to text
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function labelLines(label: AwardLabel): string[] {
+function labelLines(label: Label): string[] {
+  if ('place' in label) {
+    return [
+      `${label.placeOrdinal} Place  Time: ${label.finishTime}`,
+      `#${label.eventNumber} ${label.eventDescription}`,
+      `${label.lastName}, ${label.firstName} (${label.age})`,
+      `${label.team} – ${label.date}`,
+      label.meetName,
+    ];
+  }
   return [
-    `${label.placeOrdinal} Place  Time: ${label.finishTime}`,
     `#${label.eventNumber} ${label.eventDescription}`,
     `${label.lastName}, ${label.firstName} (${label.age})`,
+    `Personal Best: ${label.personalBestTime} (${label.improvement.toFixed(2)})`,
     `${label.team} – ${label.date}`,
     label.meetName,
   ];
@@ -46,16 +55,18 @@ function labelLines(label: AwardLabel): string[] {
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
- * Generates a PDF containing award labels laid out for Avery 8160 sheets
- * (3 columns × 10 rows, 30 labels per US letter page).
+ * Generates a PDF containing award and/or improvement labels laid out for
+ * Avery 8160 sheets (3 columns × 10 rows, 30 labels per US letter page).
  *
  * Labels are placed left-to-right, top-to-bottom (row-major order), matching
- * the layout produced by SwimTopia / HyTek.
+ * the layout produced by SwimTopia / HyTek. Each label is rendered in its own
+ * format: award labels show place and finish time; improvement labels show
+ * personal best time and improvement amount.
  *
- * @param labels - Ordered list of AwardLabel objects to print.
+ * @param labels - Ordered list of Label objects to print.
  * @returns Raw PDF bytes suitable for saving or triggering a browser download.
  */
-export async function generateAwardLabelsPdf(labels: AwardLabel[]): Promise<Uint8Array> {
+export async function generateLabelsPdf(labels: Label[]): Promise<Uint8Array> {
   const doc  = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
 
@@ -87,3 +98,4 @@ export async function generateAwardLabelsPdf(labels: AwardLabel[]): Promise<Uint
   // addDefaultPage: false — don't insert a blank page when labels is empty.
   return doc.save({ addDefaultPage: false });
 }
+

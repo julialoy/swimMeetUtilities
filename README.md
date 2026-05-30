@@ -11,7 +11,7 @@ A local, browser-based toolkit for working with swim meet files. No data is stor
 | Award labels `.pdf` | Parses an Avery 8160 award labels PDF, previews the labels, and lets you download a regenerated copy |
 | Improvement labels `.pdf` | Parses an Avery 8160 personal-best/improvement labels PDF |
 
-**Combine & Reorder:** Upload multiple award label PDFs, sort the combined label set by athlete name, event number, or meet date, and download a single merged PDF.
+**Combine & Reorder:** Upload any mix of award label and improvement label PDFs, sort the combined set by athlete name, event number, or meet date, and download a single merged PDF. PDF type is detected automatically.
 
 ## Tech stack
 
@@ -26,7 +26,7 @@ A local, browser-based toolkit for working with swim meet files. No data is stor
 ```sh
 npm install
 npm run dev      # development server at http://localhost:5173
-npm test         # run all tests (88 passing)
+npm test         # run all tests (98 passing)
 npm run build    # production build → dist/
 ```
 
@@ -35,7 +35,7 @@ npm run build    # production build → dist/
 ```
 src/
   parsers/       # File parsers — see src/parsers/README.md
-  generators/    # PDF generators (award labels via pdf-lib)
+  generators/    # PDF generators (award + improvement labels via pdf-lib)
   utils/         # Sorting and other utilities
   components/    # React UI components
   types/         # Shared TypeScript interfaces

@@ -208,3 +208,6 @@ export interface ImprovementLabelsResult {
   errors: string[];
 }
 
+/** Union of every label type that can be sorted, combined, and printed. */
+export type Label = AwardLabel | ImprovementLabel;
+

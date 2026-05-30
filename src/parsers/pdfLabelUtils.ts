@@ -1,4 +1,10 @@
+import * as pdfjsLib from 'pdfjs-dist';
 import type { TextItem } from 'pdfjs-dist/types/src/display/api';
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.mjs',
+  import.meta.url
+).toString();
 
 // ── Shared constants ──────────────────────────────────────────────────────────
 
@@ -80,4 +86,78 @@ export function toBlocks(lines: PhysicalLine[], isBoundary: (col: string) => boo
 
   if (current) blocks.push(current);
   return blocks;
+}
+
+// ── Generic label PDF parser ──────────────────────────────────────────────────
+
+/**
+ * Shared parsing pipeline for Avery 8160 label PDFs (3 columns × 10 rows).
+ *
+ * Runs a single pdfjs-dist pass over the file, reconstructs column layout via
+ * x/y position data, splits into label blocks, and calls `parseLines` on each
+ * column's 5-line slice to produce a typed label.
+ *
+ * @param file        - The PDF file to parse.
+ * @param isBoundary  - Returns true for the first line of each label block.
+ * @param parseLines  - Converts a 5-element string array into a label or null.
+ */
+export async function parseLabelsPdf<T>(
+  file: File,
+  isBoundary: (col: string) => boolean,
+  parseLines: (lines: string[]) => T | null,
+): Promise<{ labels: T[]; errors: string[] }> {
+  const errors: string[] = [];
+  const labels: T[] = [];
+
+  let arrayBuffer: ArrayBuffer;
+  try {
+    arrayBuffer = await file.arrayBuffer();
+  } catch {
+    return { labels: [], errors: ['Failed to read file'] };
+  }
+
+  let pdf: pdfjsLib.PDFDocumentProxy;
+  try {
+    pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  } catch (err) {
+    return { labels: [], errors: [err instanceof Error ? err.message : 'Failed to load PDF'] };
+  }
+
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+    try {
+      const page    = await pdf.getPage(pageNum);
+      const content = await page.getTextContent();
+
+      const rawItems: RawItem[] = content.items
+        .filter(isTextItem)
+        .map(item => ({
+          str: item.str,
+          x:   item.transform[4] as number,
+          y:   item.transform[5] as number,
+        }));
+
+      const physicalLines = toPhysicalLines(rawItems);
+      const blocks        = toBlocks(physicalLines, isBoundary);
+
+      for (const block of blocks) {
+        for (const col of [0, 1, 2] as const) {
+          const colLines = block.map(line => line[col]);
+          if (colLines.every(l => !l)) continue;
+
+          const label = parseLines(colLines);
+          if (label) {
+            labels.push(label);
+          } else {
+            errors.push(
+              `Page ${pageNum}, col ${col + 1}: could not parse label: "${colLines.slice(0, 2).join(' | ')}"`
+            );
+          }
+        }
+      }
+    } catch (err) {
+      errors.push(`Page ${pageNum}: ${err instanceof Error ? err.message : 'Parse error'}`);
+    }
+  }
+
+  return { labels, errors };
 }
