@@ -211,3 +211,23 @@ export interface ImprovementLabelsResult {
 /** Union of every label type that can be sorted, combined, and printed. */
 export type Label = AwardLabel | ImprovementLabel;
 
+// ── SwimTopia top-times report ────────────────────────────────────────────────
+
+/** One entry in a top-times report: an athlete's best time for one event. */
+export interface TopTimeEntry {
+  eventDistance: string;
+  eventStroke: string;
+  /** 1-based rank by speed within this event (1 = fastest). */
+  rank: number;
+  lastName: string;
+  firstName: string;
+  ageGroup: string;
+  age: number;
+  /** Formatted time string as it appears in the CSV (e.g. '46.08S', '1:07.69S'). */
+  result: string;
+  resultSec: number;
+  /** Meet where this best time was achieved. */
+  meetName: string;
+  date: string;
+}
+
