@@ -9,9 +9,9 @@ const PAGE_H = 792;  // 11"
 const MARGIN_TOP  = 36;   // 0.5" from top of page to top of first label row
 const MARGIN_LEFT = 13.5; // 0.1875" from left edge to first column
 
-const LABEL_W = 189; // 2.625"
-const LABEL_H = 72;  // 1.0"
-const H_GAP   = 9;   // 0.125" between columns (no vertical gap between rows)
+const LABEL_W = 189;  // 2.625"
+const LABEL_H = 72;   // 1.0" (row pitch — no vertical gap between rows)
+const H_GAP   = 12.6; // column pitch is LABEL_W + H_GAP = 201.6 (matches reference sheet)
 
 const COLS            = 3;
 const ROWS            = 10;
@@ -26,10 +26,10 @@ const COL_X: readonly number[] = [
 
 // ── Text layout within a label ────────────────────────────────────────────────
 
-const FONT_SIZE    = 8;
-const LINE_SPACING = 11;  // baseline-to-baseline
-const PAD_TOP      = 6;   // pts from label top to first text baseline
-const PAD_LEFT     = 4;   // pts from label left edge to text
+const FONT_SIZE    = 9;     // matches reference sheet
+const LINE_SPACING = 10.35; // baseline-to-baseline (5 lines per 72pt label)
+const PAD_TOP      = 9;     // pts from label top to first text baseline → first baseline at labelTop−18
+const PAD_LEFT     = 9;     // pts from label left edge to text (col text x: 22.5 / 224.1 / 425.7)
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
