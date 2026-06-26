@@ -1,6 +1,6 @@
 import type { Label } from '../types';
 
-export type SortKey = 'name' | 'event' | 'week';
+export type SortKey = 'name' | 'event' | 'week' | 'team';
 export type { Label };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -29,37 +29,40 @@ function getPlace(label: Label): number {
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
- * Returns a new sorted copy of `labels` without mutating the input.
- * Accepts any mix of AwardLabel and ImprovementLabel.
+ * Compares two labels by the given key. Shared by `sortLabels` (which sorts a
+ * plain `Label[]`) and callers that sort a richer wrapper around labels (e.g.
+ * the Combine & Reorder workbench, which keeps a selection id alongside each
+ * label). Keeping one comparator ensures both produce identical orderings.
  *
  * Sort keys:
  * - `'name'`  — lastName → firstName
- * - `'event'` — event number (numeric then letter suffix) → place
+ * - `'event'` — event number (numeric then letter suffix) → place → name
  *               (award labels by finish place; improvement labels after all
- *               award labels for the same event, then by lastName/firstName)
- * - `'week'`  — date (chronological) → event number → place → lastName/firstName
+ *               award labels for the same event)
+ * - `'week'`  — date (chronological) → event number → place → name
+ * - `'team'`  — team → event number → place → name
+ */
+export function compareLabels(a: Label, b: Label, by: SortKey): number {
+  const nameCmp = a.lastName.localeCompare(b.lastName) || a.firstName.localeCompare(b.firstName);
+  if (by === 'name') return nameCmp;
+
+  const [an, al] = parseEventNumber(a.eventNumber);
+  const [bn, bl] = parseEventNumber(b.eventNumber);
+  const eventCmp = (an - bn) || al.localeCompare(bl);
+  const placeCmp = getPlace(a) - getPlace(b);
+
+  if (by === 'event') return eventCmp || placeCmp || nameCmp;
+  if (by === 'team')  return a.team.localeCompare(b.team) || eventCmp || placeCmp || nameCmp;
+
+  // 'week': date → event number → place/type → name
+  return (parseDateMs(a.date) - parseDateMs(b.date)) || eventCmp || placeCmp || nameCmp;
+}
+
+/**
+ * Returns a new sorted copy of `labels` without mutating the input.
+ * Accepts any mix of AwardLabel and ImprovementLabel.
  */
 export function sortLabels<T extends Label>(labels: T[], by: SortKey): T[] {
-  return [...labels].sort((a, b) => {
-    if (by === 'name') {
-      return (
-        a.lastName.localeCompare(b.lastName) ||
-        a.firstName.localeCompare(b.firstName)
-      );
-    }
-
-    const [an, al] = parseEventNumber(a.eventNumber);
-    const [bn, bl] = parseEventNumber(b.eventNumber);
-    const eventCmp = (an - bn) || al.localeCompare(bl);
-    const placeCmp = getPlace(a) - getPlace(b);
-    const nameCmp  = a.lastName.localeCompare(b.lastName) || a.firstName.localeCompare(b.firstName);
-
-    if (by === 'event') {
-      return eventCmp || placeCmp || nameCmp;
-    }
-
-    // 'week': date → event number → place/type → name
-    return (parseDateMs(a.date) - parseDateMs(b.date)) || eventCmp || placeCmp || nameCmp;
-  });
+  return [...labels].sort((a, b) => compareLabels(a, b, by));
 }
 

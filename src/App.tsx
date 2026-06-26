@@ -6,7 +6,7 @@ import { parseHy3, type Hy3ParseResult } from './parsers/hy3TmResultsParser';
 import { parseAnyLabelsPdf } from './parsers/labelParser';
 import { parseSwimTopiaReportCard } from './parsers/swimTopiaParser';
 import { generateLabelsPdf } from './generators/awardLabelsPdfGenerator';
-import { sortLabels, type SortKey } from './utils/awardLabelSort';
+import { compareLabels, type SortKey } from './utils/awardLabelSort';
 import { extractMeetNames } from './utils/topTimes';
 import type { Label, SwimTopiaReportCard, SwimTopiaEventSummary } from './types';
 
@@ -52,10 +52,17 @@ export default function App() {
   const [generating, setGenerating] = useState(false);
 
   // ── Combine & Reorder state ────────────────────────────────────────────────
-  type UploadedPdf = { name: string; labels: Label[]; errors: string[] };
+  // Each uploaded PDF gets a stable `uid` so a label's selection id survives
+  // re-renders and removals of other PDFs (plain array indices would shift).
+  type UploadedPdf = { uid: string; name: string; labels: Label[]; errors: string[] };
   const [uploadedPdfs, setUploadedPdfs] = useState<UploadedPdf[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [combining, setCombining] = useState(false);
+  // Inverse selections (empty = everything on): a label/team is active unless
+  // present here. This way newly added PDFs/teams default to selected with no
+  // extra bookkeeping on upload.
+  const [excludedTeams, setExcludedTeams] = useState<Set<string>>(new Set());
+  const [deselectedIds, setDeselectedIds] = useState<Set<string>>(new Set());
   const combineInputRef = useRef<HTMLInputElement>(null);
 
   async function handleAddPdfs(files: FileList) {
@@ -63,20 +70,34 @@ export default function App() {
     const results = await Promise.all(
       Array.from(files).map(async (f) => {
         const parsed = await parseAnyLabelsPdf(f);
-        return { name: f.name, ...parsed };
+        return { uid: crypto.randomUUID(), name: f.name, ...parsed };
       })
     );
     setUploadedPdfs(prev => [...prev, ...results]);
     setCombining(false);
   }
 
-  async function handleCombineDownload() {
+  async function handleCombineDownload(labels: Label[]) {
     setCombining(true);
-    const merged = uploadedPdfs.flatMap(p => p.labels);
-    const sorted = sortLabels(merged, sortKey);
-    const bytes = await generateLabelsPdf(sorted);
+    const bytes = await generateLabelsPdf(labels);
     triggerDownload(bytes, `labels_combined_${sortKey}.pdf`);
     setCombining(false);
+  }
+
+  function toggleTeam(team: string) {
+    setExcludedTeams(prev => {
+      const next = new Set(prev);
+      if (next.has(team)) next.delete(team); else next.add(team);
+      return next;
+    });
+  }
+
+  function toggleLabel(id: string) {
+    setDeselectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
   }
 
   async function handleDownload(labels: Label[], fileName: string) {
@@ -112,6 +133,18 @@ export default function App() {
 
     setLoading(false);
   }
+
+  // ── Combine & Reorder derived view (recomputed each render) ─────────────────
+  // Flatten every uploaded label into a selectable row with a stable id.
+  const flatLabels = uploadedPdfs.flatMap(p =>
+    p.labels.map((label, li) => ({ id: `${p.uid}-${li}`, label }))
+  );
+  const teams = [...new Set(flatLabels.map(f => f.label.team))].sort((a, b) => a.localeCompare(b));
+  // Rows from non-excluded teams, in the chosen sort order.
+  const visibleRows = flatLabels
+    .filter(f => !excludedTeams.has(f.label.team))
+    .sort((a, b) => compareLabels(a.label, b.label, sortKey));
+  const outputLabels = visibleRows.filter(f => !deselectedIds.has(f.id)).map(f => f.label);
 
   return (
     <div style={{ maxWidth: 900, margin: '2rem auto', padding: '0 1rem', fontFamily: 'sans-serif' }}>
@@ -274,11 +307,12 @@ export default function App() {
           )}
         </div>
       )}
-      {/* ── Combine & Reorder ─────────────────────────────────────────────── */}
+      {/* ── Combine, Filter & Select ──────────────────────────────────────── */}
       <hr style={{ margin: '2.5rem 0' }} />
-      <h2>Combine &amp; Reorder Award Labels</h2>
+      <h2>Combine, Filter &amp; Select Labels</h2>
       <p style={{ color: '#555', marginTop: 0 }}>
-        Add one or more award label PDFs, choose a sort order, then download the combined result.
+        Add one or more award or improvement label PDFs, filter by team, pick the exact
+        labels you want, choose a sort order, then download a new combined PDF.
       </p>
 
       <input
@@ -299,8 +333,8 @@ export default function App() {
 
       {uploadedPdfs.length > 0 && (
         <ul style={{ marginTop: '1rem', fontSize: '0.9rem', lineHeight: 2 }}>
-          {uploadedPdfs.map((p, i) => (
-            <li key={i}>
+          {uploadedPdfs.map((p) => (
+            <li key={p.uid}>
               {p.name} &mdash; {p.labels.length} label{p.labels.length !== 1 ? 's' : ''}
               {p.errors.length > 0 && (
                 <span style={{ color: 'orange', marginLeft: '0.5rem' }}>
@@ -308,7 +342,7 @@ export default function App() {
                 </span>
               )}
               <button
-                onClick={() => setUploadedPdfs(prev => prev.filter((_, j) => j !== i))}
+                onClick={() => setUploadedPdfs(prev => prev.filter(q => q.uid !== p.uid))}
                 style={{ marginLeft: '0.75rem', fontSize: '0.8rem', cursor: 'pointer' }}
               >
                 Remove
@@ -318,29 +352,71 @@ export default function App() {
         </ul>
       )}
 
-      {uploadedPdfs.length > 0 && (
-        <div style={{ marginTop: '1rem' }}>
-          <strong>Sort by:</strong>
-          {(['name', 'event', 'week'] as SortKey[]).map(key => (
-            <label key={key} style={{ marginLeft: '1rem', cursor: 'pointer' }}>
-              <input
-                type="radio"
-                name="sortKey"
-                value={key}
-                checked={sortKey === key}
-                onChange={() => setSortKey(key)}
-                style={{ marginRight: '0.3rem' }}
-              />
-              {key === 'name' ? 'Athlete name' : key === 'event' ? 'Event' : 'Week / date'}
-            </label>
-          ))}
+      {flatLabels.length > 0 && (
+        <div style={{ marginTop: '1.25rem', display: 'flex', gap: '2.5rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+          {teams.length > 1 && (
+            <div>
+              <div style={{ fontWeight: 600, marginBottom: '0.4rem' }}>
+                Teams:
+                <button onClick={() => setExcludedTeams(new Set())} style={miniBtn}>All</button>
+                <button onClick={() => setExcludedTeams(new Set(teams))} style={miniBtn}>None</button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', maxHeight: 160, overflowY: 'auto' }}>
+                {teams.map(team => (
+                  <label key={team} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.875rem', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={!excludedTeams.has(team)} onChange={() => toggleTeam(team)} />
+                    {team}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <div style={{ fontWeight: 600, marginBottom: '0.4rem' }}>Sort by:</div>
+            {(['name', 'event', 'week', 'team'] as SortKey[]).map(key => (
+              <label key={key} style={{ display: 'block', cursor: 'pointer', fontSize: '0.875rem', marginBottom: '0.2rem' }}>
+                <input
+                  type="radio"
+                  name="sortKey"
+                  value={key}
+                  checked={sortKey === key}
+                  onChange={() => setSortKey(key)}
+                  style={{ marginRight: '0.4rem' }}
+                />
+                {key === 'name' ? 'Athlete name' : key === 'event' ? 'Event' : key === 'week' ? 'Week / date' : 'Team'}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {visibleRows.length > 0 && (
+        <div style={{ marginTop: '1.25rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem' }}>
+            <strong>Labels ({outputLabels.length} of {visibleRows.length} selected):</strong>
+            <button onClick={() => setDeselectedIds(new Set())} style={miniBtn}>Select all</button>
+            <button onClick={() => setDeselectedIds(new Set(flatLabels.map(f => f.id)))} style={miniBtn}>Select none</button>
+          </div>
+          <div style={{ maxHeight: 320, overflowY: 'auto', border: '1px solid #ddd', borderRadius: 4, padding: '0.5rem' }}>
+            {visibleRows.map(({ id, label: l }) => (
+              <label key={id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', padding: '0.15rem 0', cursor: 'pointer' }}>
+                <input type="checkbox" checked={!deselectedIds.has(id)} onChange={() => toggleLabel(id)} />
+                {'place' in l ? (
+                  <span><strong>{l.placeOrdinal}</strong> &middot; #{l.eventNumber} {l.eventDescription} &middot; {l.lastName}, {l.firstName} ({l.age}) &middot; {l.finishTime} &middot; <em>{l.team}</em></span>
+                ) : (
+                  <span><strong>{l.improvement.toFixed(2)}s</strong> &middot; #{l.eventNumber} {l.eventDescription} &middot; {l.lastName}, {l.firstName} ({l.age}) &middot; PB {l.personalBestTime} &middot; <em>{l.team}</em></span>
+                )}
+              </label>
+            ))}
+          </div>
           <div style={{ marginTop: '1rem' }}>
             <button
-              onClick={handleCombineDownload}
-              disabled={combining}
-              style={{ padding: '0.5rem 1rem', cursor: combining ? 'wait' : 'pointer' }}
+              onClick={() => handleCombineDownload(outputLabels)}
+              disabled={combining || outputLabels.length === 0}
+              style={{ padding: '0.5rem 1rem', cursor: combining || outputLabels.length === 0 ? 'not-allowed' : 'pointer' }}
             >
-              {combining ? 'Generating…' : `Download combined PDF (${uploadedPdfs.reduce((n, p) => n + p.labels.length, 0)} labels)`}
+              {combining ? 'Generating…' : `Download PDF (${outputLabels.length} label${outputLabels.length !== 1 ? 's' : ''})`}
             </button>
           </div>
         </div>
@@ -370,4 +446,9 @@ const thStyle: React.CSSProperties = {
 /** Shared style for table data cells. */
 const tdStyle: React.CSSProperties = {
   border: '1px solid #ddd', padding: '4px 8px',
+};
+
+/** Small inline "All / None / Select all" action buttons. */
+const miniBtn: React.CSSProperties = {
+  marginLeft: '0.5rem', fontSize: '0.8rem', fontWeight: 'normal', cursor: 'pointer',
 };
