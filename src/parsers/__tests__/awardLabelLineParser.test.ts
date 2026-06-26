@@ -109,6 +109,70 @@ describe('parseLabelLines', () => {
     expect(label!.team).toBe('Jedi A');
   });
 
+  // ── HyTek / meet-software export format ──────────────────────────────────
+  // Place line is "Place: 1st  Time: …", age is bare (no parens), team uses a
+  // plain hyphen and a numeric date.
+  it('parses the "Place: Nth  Time:" export format with a bare age', () => {
+    const label = parseLabelLines([
+      'Place: 1st Time: 1:29.32',
+      '#2 Girls 12 & Under 100 SC Meter IM',
+      'Aguilar, Mia 12',
+      'Clarksburg Town Center Tiger S - 6/24/2026',
+      'Week 2B 2026',
+    ]);
+    expect(label).not.toBeNull();
+    expect(label!.place).toBe(1);
+    expect(label!.placeOrdinal).toBe('1st');
+    expect(label!.finishTime).toBe('1:29.32');
+    expect(label!.eventNumber).toBe('2');
+    expect(label!.eventDescription).toBe('Girls 12 & Under 100 SC Meter IM');
+    expect(label!.lastName).toBe('Aguilar');
+    expect(label!.firstName).toBe('Mia');
+    expect(label!.age).toBe(12);
+    expect(label!.team).toBe('Clarksburg Town Center Tiger S');
+    expect(label!.date).toBe('6/24/2026');
+    expect(label!.meetName).toBe('Week 2B 2026');
+  });
+
+  it('keeps a trailing record marker as part of the finish time', () => {
+    const label = parseLabelLines([
+      'Place: 1st Time: 20.00 ALL*',
+      '#8 Girls 8 & Under 25 SC Meter Freestyle',
+      'Hui, Ada 8',
+      'Clarksburg Town Center Tiger S - 6/24/2026',
+      'Week 2B 2026',
+    ]);
+    expect(label).not.toBeNull();
+    expect(label!.finishTime).toBe('20.00 ALL*');
+  });
+
+  it('parses a double-digit place in the export format', () => {
+    const label = parseLabelLines([
+      'Place: 17th Time: 1:08.99',
+      '#12 Girls 11-12 50 SC Meter Freestyle',
+      'Barlow, Baileigh 11',
+      'Clarksburg Town Center Tiger S - 6/24/2026',
+      'Week 2B 2026',
+    ]);
+    expect(label).not.toBeNull();
+    expect(label!.place).toBe(17);
+    expect(label!.placeOrdinal).toBe('17th');
+  });
+
+  it('parses a hyphenated last name with a bare age', () => {
+    const label = parseLabelLines([
+      'Place: 2nd Time: 1:38.78',
+      '#2 Girls 12 & Under 100 SC Meter IM',
+      'Amaya-Rivera, Alina 12',
+      'MCT Marlins Swim & Dive Team - 6/24/2026',
+      'Week 2B 2026',
+    ]);
+    expect(label).not.toBeNull();
+    expect(label!.lastName).toBe('Amaya-Rivera');
+    expect(label!.firstName).toBe('Alina');
+    expect(label!.team).toBe('MCT Marlins Swim & Dive Team');
+  });
+
   it('returns null when fewer than 5 lines are provided', () => {
     expect(parseLabelLines([
       '1st Place Time: 1:02.34',
