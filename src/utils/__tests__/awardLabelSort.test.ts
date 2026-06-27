@@ -130,6 +130,38 @@ describe('sortLabels — week', () => {
   });
 });
 
+describe('sortLabels — team', () => {
+  it('sorts by team name alphabetically', () => {
+    const labels = [
+      award({ place: 1, eventNumber: '1', lastName: 'Vader',  firstName: 'Zam', date: 'Jun 25, 2025', team: 'Sith' }),
+      award({ place: 1, eventNumber: '1', lastName: 'Ackbar', firstName: 'Bib', date: 'Jun 25, 2025', team: 'Jedi' }),
+      award({ place: 1, eventNumber: '1', lastName: 'Bridger',firstName: 'Ezra',date: 'Jun 25, 2025', team: 'Rebels' }),
+    ];
+    const sorted = sortLabels(labels, 'team');
+    expect(sorted.map(l => l.team)).toEqual(['Jedi', 'Rebels', 'Sith']);
+  });
+
+  it('sorts by event then place within the same team', () => {
+    const labels = [
+      award({ place: 2, eventNumber: '3', lastName: 'Solo',      firstName: 'Han',  date: 'Jun 25, 2025', team: 'Rebels' }),
+      award({ place: 1, eventNumber: '3', lastName: 'Organa',    firstName: 'Leia', date: 'Jun 25, 2025', team: 'Rebels' }),
+      award({ place: 1, eventNumber: '1', lastName: 'Skywalker', firstName: 'Luke', date: 'Jun 25, 2025', team: 'Rebels' }),
+    ];
+    const sorted = sortLabels(labels, 'team');
+    expect(sorted.map(l => `#${l.eventNumber}/${l.place}`)).toEqual(['#1/1', '#3/1', '#3/2']);
+  });
+
+  it('groups all of one team before the next regardless of event', () => {
+    const labels = [
+      award({ place: 1, eventNumber: '9', lastName: 'Ackbar', firstName: 'Bib',  date: 'Jun 25, 2025', team: 'Jedi' }),
+      award({ place: 1, eventNumber: '1', lastName: 'Vader',  firstName: 'Zam',  date: 'Jun 25, 2025', team: 'Sith' }),
+      award({ place: 1, eventNumber: '1', lastName: 'Yoda',   firstName: 'Min',  date: 'Jun 25, 2025', team: 'Jedi' }),
+    ];
+    const sorted = sortLabels(labels, 'team');
+    expect(sorted.map(l => l.team)).toEqual(['Jedi', 'Jedi', 'Sith']);
+  });
+});
+
 // ── sortLabels — improvement labels only ──────────────────────────────────────
 
 describe('sortLabels — improvement labels only', () => {
