@@ -4,7 +4,10 @@ import { parseLabelLines as parseAwardLines } from './awardLabelLineParser';
 import { parseLabelLines as parseImprovLines } from './improvementLabelLineParser';
 import type { Label } from '../types';
 
-const AWARD_RE = /\b\w+\s+Place\s+Time:/i;
+// Award-label boundary line, in either export format:
+//   "1st Place  Time: …"  (this app's generator)
+//   "Place: 1st  Time: …" (HyTek/meet-software award labels)
+const AWARD_RE = /(?:Place:\s*\w+|\b\w+\s+Place)\s+Time:/i;
 const IMPROV_RE = /^#\w+\s+/;
 
 type LabelType = 'award' | 'improvement';

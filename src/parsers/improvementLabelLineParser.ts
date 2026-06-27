@@ -1,4 +1,5 @@
 import type { ImprovementLabel } from '../types';
+import { resolveLigatures } from './ligatures';
 
 // ── Regex patterns ────────────────────────────────────────────────────────────
 
@@ -22,7 +23,10 @@ const LINES_PER_LABEL = 5;
  *   3: {team} – {date}
  *   4: {meetName}
  */
-export function parseLabelLines(lines: string[]): ImprovementLabel | null {
+export function parseLabelLines(rawLines: string[]): ImprovementLabel | null {
+  // Normalise the font's lowercase-"f" → ϐ substitution across every field
+  // (event names and swimmer names alike) before matching.
+  const lines = rawLines.map(resolveLigatures);
   if (lines.length < LINES_PER_LABEL) return null;
   if (lines.some(l => !l)) return null;
 

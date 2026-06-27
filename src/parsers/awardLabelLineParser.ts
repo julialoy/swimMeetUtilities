@@ -1,10 +1,16 @@
 import type { AwardLabel } from '../types';
+import { resolveLigatures } from './ligatures';
 
 // ── Regex patterns ────────────────────────────────────────────────────────────
 
-const PLACE_RE   = /^(\w+)\s+Place\s+Time:\s+(.+)$/i;
+// Place/time line. Accepts two export formats:
+//   "1st Place  Time: 1:02.34"  (this app's generator)
+//   "Place: 1st  Time: 1:29.32" (HyTek/meet-software award labels)
+// A trailing record marker (e.g. "20.00 ALL*") is kept as part of finishTime.
+const PLACE_RE   = /^(?:Place:\s*)?(\w+)(?:\s+Place)?\s+Time:\s+(.+)$/i;
 const EVENT_RE   = /^#(\w+)\s+(.+)$/;
-const SWIMMER_RE = /^(.+),\s*(.+?)\s+\((\d+)\)$/;
+// Swimmer line. Age may be parenthesised "(12)" or bare "12".
+const SWIMMER_RE = /^(.+),\s*(.+?)\s+\(?(\d+)\)?$/;
 const TEAM_RE    = /^(.+?)\s+[–—-]\s+(.+)$/;
 
 const LINES_PER_LABEL = 5;
@@ -19,14 +25,17 @@ function parseOrdinalToNumber(s: string): number {
  * Parses one column's 5 text lines into an AwardLabel.
  * Returns null if any line is empty or a regex fails to match.
  *
- * Line order:
- *   0: {placeOrdinal} Place Time: {finishTime}
+ * Line order (either export format is accepted — see the regexes above):
+ *   0: "{placeOrdinal} Place Time: {finishTime}" or "Place: {placeOrdinal} Time: {finishTime}"
  *   1: #{eventNumber} {eventDescription}
- *   2: {lastName}, {firstName} ({age})
+ *   2: "{lastName}, {firstName} ({age})" or "{lastName}, {firstName} {age}"
  *   3: {team} – {date}
  *   4: {meetName}
  */
-export function parseLabelLines(lines: string[]): AwardLabel | null {
+export function parseLabelLines(rawLines: string[]): AwardLabel | null {
+  // Normalise the font's lowercase-"f" → ϐ substitution across every field
+  // (event names and swimmer names alike) before matching.
+  const lines = rawLines.map(resolveLigatures);
   if (lines.length < LINES_PER_LABEL) return null;
   if (lines.some(l => !l)) return null;
 
