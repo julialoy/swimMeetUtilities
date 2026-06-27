@@ -1,4 +1,5 @@
 import type { AwardLabel } from '../types';
+import { resolveLigatures } from './ligatures';
 
 // ── Regex patterns ────────────────────────────────────────────────────────────
 
@@ -31,7 +32,10 @@ function parseOrdinalToNumber(s: string): number {
  *   3: {team} – {date}
  *   4: {meetName}
  */
-export function parseLabelLines(lines: string[]): AwardLabel | null {
+export function parseLabelLines(rawLines: string[]): AwardLabel | null {
+  // Normalise the font's lowercase-"f" → ϐ substitution across every field
+  // (event names and swimmer names alike) before matching.
+  const lines = rawLines.map(resolveLigatures);
   if (lines.length < LINES_PER_LABEL) return null;
   if (lines.some(l => !l)) return null;
 

@@ -173,6 +173,18 @@ describe('parseLabelLines', () => {
     expect(label!.team).toBe('MCT Marlins Swim & Dive Team');
   });
 
+  it('resolves the butterfly ligature in the event description', () => {
+    const label = parseLabelLines([
+      'Place: 1st Time: 41.38',
+      '#43 Boys 11-12 50 SC Meter Butterϐly',
+      'Zamfir, Tavi 11',
+      'MCT Marlins Swim & Dive Team - 6/24/2026',
+      'Week 2B 2026',
+    ]);
+    expect(label).not.toBeNull();
+    expect(label!.eventDescription).toBe('Boys 11-12 50 SC Meter Butterfly');
+  });
+
   it('returns null when fewer than 5 lines are provided', () => {
     expect(parseLabelLines([
       '1st Place Time: 1:02.34',
