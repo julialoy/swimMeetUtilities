@@ -93,7 +93,9 @@ export async function generateTopTimesPdf(entries: TopTimeEntry[]): Promise<Uint
       color: rgb(0.45, 0.45, 0.45),
     });
 
-    page.drawText(`${entry.lastName}, ${entry.firstName}`, {
+    // A swim-up entry has been moved into the older group's event; mark it
+    // "(swim up)" after the name.
+    page.drawText(`${entry.lastName}, ${entry.firstName}${entry.swamUpFrom ? ' (swim up)' : ''}`, {
       x:    COL_NAME,
       y,
       font: regularFont,

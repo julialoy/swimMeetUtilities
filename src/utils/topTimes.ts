@@ -36,6 +36,19 @@ const AGE_GROUP_INFO: Readonly<Record<string, { display: string; order: number }
   '15-18 men':       { display: 'Men 15-18',        order: 10 },
 };
 
+// Reverse map: display name → a canonical AGE_GROUP_INFO key. Lets a swim-up
+// target (chosen as a display name, e.g. "Boys 11-12") be turned back into a
+// canonical age group so it groups/sorts/titles identically to native swimmers.
+const DISPLAY_TO_KEY: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(AGE_GROUP_INFO).map(([key, info]) => [info.display, key])
+);
+
+/** Display name for an age group ("9-10 Boys" → "Boys 9-10"); raw trimmed if unknown. */
+export function ageGroupDisplay(ageGroup: string): string {
+  const info = AGE_GROUP_INFO[normalizeAgeGroup(ageGroup)];
+  return info ? info.display : ageGroup.trim();
+}
+
 // Standard abbreviated stroke names used in swim-meet programs.
 // Both full names (HyTek "Freestyle") and SwimTopia's already-abbreviated
 // names ("Free") are accepted as keys so either source maps to the same label.
@@ -103,6 +116,35 @@ export function formatEventTitle(ageGroup: string, distance: string, stroke: str
   return `${prefix} ${distance} ${strokeDisplay}`;
 }
 
+// Age-group ladder per sex, using the display names from AGE_GROUP_INFO, ordered
+// youngest → oldest. Drives the valid "swim up" targets for an athlete.
+const AGE_LADDER: ReadonlyArray<{ display: string; sex: 'F' | 'M'; rank: number }> = [
+  { display: 'Girls 8 & Under', sex: 'F', rank: 0 },
+  { display: 'Girls 9-10',      sex: 'F', rank: 1 },
+  { display: 'Girls 11-12',     sex: 'F', rank: 2 },
+  { display: 'Girls 13-14',     sex: 'F', rank: 3 },
+  { display: 'Women 15-18',     sex: 'F', rank: 4 },
+  { display: 'Boys 8 & Under',  sex: 'M', rank: 0 },
+  { display: 'Boys 9-10',       sex: 'M', rank: 1 },
+  { display: 'Boys 11-12',      sex: 'M', rank: 2 },
+  { display: 'Boys 13-14',      sex: 'M', rank: 3 },
+  { display: 'Men 15-18',       sex: 'M', rank: 4 },
+];
+
+/**
+ * Returns the display names of age groups an athlete could "swim up" into:
+ * same sex, older bracket than their own. Populates the swim-up target selector.
+ * If the athlete's group can't be resolved (unknown/genderless), offers every
+ * ladder group so the user can still choose.
+ */
+export function olderAgeGroups(ageGroup: string): string[] {
+  const info = AGE_GROUP_INFO[normalizeAgeGroup(ageGroup)];
+  const display = info ? info.display : ageGroup.trim();
+  const current = AGE_LADDER.find(g => g.display === display);
+  if (!current) return AGE_LADDER.map(g => g.display);
+  return AGE_LADDER.filter(g => g.sex === current.sex && g.rank > current.rank).map(g => g.display);
+}
+
 /**
  * Returns all unique meet names in the order they first appear across the
  * parsed athletes. Preserves the column order from the source CSV (Meet1…Meet17).
@@ -135,11 +177,18 @@ export function extractMeetNames(athletes: SwimTopiaAthlete[]): string[] {
  *
  * `topN = 0` is uncapped: every athlete with a result is included, matching
  * HyTek Team Manager's "top 0" convention in the Best Times report.
+ *
+ * `swimUps` maps an entry key (`athleteId|distance|stroke`, see `topTimeKey`) to
+ * the display name of an OLDER age group the athlete manually swam up into. Such
+ * an athlete's result is moved into that older group's event, ranked among its
+ * swimmers, tagged with `swamUpFrom` (their own group), and always kept even if
+ * it falls outside the top N (so a manual flag never silently drops a swimmer).
  */
 export function getTopTimes(
   athletes: SwimTopiaAthlete[],
   selectedMeets: ReadonlySet<string>,
-  topN: number
+  topN: number,
+  swimUps: ReadonlyMap<string, string> = new Map(),
 ): TopTimeEntry[] {
   if (selectedMeets.size === 0) return [];
 
@@ -150,7 +199,14 @@ export function getTopTimes(
 
   for (const athlete of athletes) {
     for (const event of athlete.events) {
-      const key = eventKey(athlete.ageGroup, event.eventDistance, event.eventStroke);
+      // A swim-up moves this swim into the older group's event; convert the
+      // chosen display name back to a canonical age group so it groups, sorts,
+      // and titles exactly like native swimmers of that group.
+      const target = swimUps.get(`${athlete.athleteId}|${event.eventDistance}|${event.eventStroke}`);
+      const effectiveAgeGroup = target ? (DISPLAY_TO_KEY[target] ?? target) : athlete.ageGroup;
+      const swamUpFrom = target ? ageGroupDisplay(athlete.ageGroup) : undefined;
+
+      const key = eventKey(effectiveAgeGroup, event.eventDistance, event.eventStroke);
       if (!byEvent.has(key)) {
         byEvent.set(key, { distance: event.eventDistance, stroke: event.eventStroke, best: new Map() });
       }
@@ -161,14 +217,16 @@ export function getTopTimes(
         const existing = slot.best.get(athlete.athleteId);
         if (!existing || mr.resultSec < existing.resultSec) {
           slot.best.set(athlete.athleteId, {
+            athleteId: athlete.athleteId,
             lastName: athlete.lastName,
             firstName: athlete.firstName,
-            ageGroup: athlete.ageGroup,
+            ageGroup: effectiveAgeGroup,
             age: athlete.age,
             result: mr.result,
             resultSec: mr.resultSec,
             meetName: mr.meetName,
             date: mr.date,
+            swamUpFrom,
           });
         }
       }
@@ -179,13 +237,20 @@ export function getTopTimes(
 
   for (const [, { distance, stroke, best }] of byEvent) {
     const sorted = [...best.values()].sort((a, b) => a.resultSec - b.resultSec);
-    const ranked = topN === 0 ? sorted : sorted.slice(0, topN);
-    ranked.forEach((c, i) => {
-      entries.push({ eventDistance: distance, eventStroke: stroke, rank: i + 1, ...c });
+    sorted.forEach((c, i) => {
+      const rank = i + 1;
+      // Keep the top N, plus any swim-up (manually flagged) beyond the cutoff.
+      if (topN !== 0 && rank > topN && !c.swamUpFrom) return;
+      entries.push({ eventDistance: distance, eventStroke: stroke, rank, ...c });
     });
   }
 
   return entries;
+}
+
+/** Stable per-entry key (athlete + event) for hanging swim-up flags on. */
+export function topTimeKey(e: { athleteId: string; eventDistance: string; eventStroke: string }): string {
+  return `${e.athleteId}|${e.eventDistance}|${e.eventStroke}`;
 }
 
 // ── Sort helpers ──────────────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { parseSwimTopiaReportCard } from '../parsers/swimTopiaParser';
-import { eventKey, extractMeetNames, formatEventTitle, getTopTimes, sortTopTimes, type TopTimesSortKey, type TopTimesSortOrder } from '../utils/topTimes';
+import { ageGroupDisplay, eventKey, extractMeetNames, formatEventTitle, getTopTimes, olderAgeGroups, sortTopTimes, topTimeKey, type TopTimesSortKey, type TopTimesSortOrder } from '../utils/topTimes';
+import type { TopTimeEntry } from '../types';
 import { generateTopTimesPdf } from '../generators/topTimesPdfGenerator';
 import type { SwimTopiaReportCard } from '../types';
 
@@ -13,6 +14,8 @@ export function SwimTopiaTopTimes() {
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [fileName, setFileName] = useState('');
+  // Manually-flagged swim-ups: entry key → older age-group display name.
+  const [swimUps, setSwimUps] = useState<Map<string, string>>(new Map());
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function handleFile(file: File) {
@@ -23,7 +26,16 @@ export function SwimTopiaTopTimes() {
     setReportCard(parsed);
     setAvailableMeets(meets);
     setSelectedMeets(new Set(meets));
+    setSwimUps(new Map());
     setLoading(false);
+  }
+
+  function setSwimUp(entry: TopTimeEntry, group: string) {
+    setSwimUps(prev => {
+      const next = new Map(prev);
+      if (group) next.set(topTimeKey(entry), group); else next.delete(topTimeKey(entry));
+      return next;
+    });
   }
 
   async function handleDownloadPdf() {
@@ -56,8 +68,10 @@ export function SwimTopiaTopTimes() {
     });
   }
 
+  // Swim-up flags are applied inside getTopTimes: flagged swimmers are moved
+  // into the older group's event and re-ranked, so entries are print-ready.
   const entries = reportCard
-    ? sortTopTimes(getTopTimes(reportCard.athletes, selectedMeets, topN), sortOrder)
+    ? sortTopTimes(getTopTimes(reportCard.athletes, selectedMeets, topN, swimUps), sortOrder)
     : [];
 
   const eventCount = new Set(entries.map(e => eventKey(e.ageGroup, e.eventDistance, e.eventStroke))).size;
@@ -196,21 +210,44 @@ export function SwimTopiaTopTimes() {
                   <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '0.85rem' }}>
                     <thead>
                       <tr>
-                        {['Event', 'Athlete', 'Time', 'Meet', 'Date'].map(h => (
+                        {['Event', 'Athlete', 'Time', 'Meet', 'Date', 'Swam up to'].map(h => (
                           <th key={h} style={thStyle}>{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {entries.map((e, i) => (
-                        <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#f9f9f9' }}>
-                          <td style={tdStyle}>{formatEventTitle(e.ageGroup, e.eventDistance, e.eventStroke)}</td>
-                          <td style={tdStyle}>{e.lastName}, {e.firstName}</td>
-                          <td style={{ ...tdStyle, fontVariantNumeric: 'tabular-nums' }}>{e.result}</td>
-                          <td style={tdStyle}>{e.meetName}</td>
-                          <td style={tdStyle}>{e.date}</td>
-                        </tr>
-                      ))}
+                      {entries.map((e, i) => {
+                        // A moved swim-up's own group is in swamUpFrom; drive the
+                        // selector's options off it so the choices stay stable.
+                        const ownGroup = e.swamUpFrom ?? ageGroupDisplay(e.ageGroup);
+                        const options = olderAgeGroups(ownGroup);
+                        return (
+                          <tr key={topTimeKey(e)} style={{ background: e.swamUpFrom ? '#fff8e1' : i % 2 === 0 ? '#fff' : '#f9f9f9' }}>
+                            <td style={tdStyle}>{formatEventTitle(e.ageGroup, e.eventDistance, e.eventStroke)}</td>
+                            <td style={tdStyle}>
+                              {e.lastName}, {e.firstName}
+                              {e.swamUpFrom && <span style={{ color: '#a67c00' }}> (swim up)</span>}
+                            </td>
+                            <td style={{ ...tdStyle, fontVariantNumeric: 'tabular-nums' }}>{e.result}</td>
+                            <td style={tdStyle}>{e.meetName}</td>
+                            <td style={tdStyle}>{e.date}</td>
+                            <td style={tdStyle}>
+                              {options.length > 0 ? (
+                                <select
+                                  value={e.swamUpFrom ? ageGroupDisplay(e.ageGroup) : ''}
+                                  onChange={ev => setSwimUp(e, ev.target.value)}
+                                  style={{ fontSize: '0.8rem', padding: '0.1rem 0.2rem' }}
+                                >
+                                  <option value="">—</option>
+                                  {options.map(g => <option key={g} value={g}>{g}</option>)}
+                                </select>
+                              ) : (
+                                <span style={{ color: '#bbb' }}>—</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

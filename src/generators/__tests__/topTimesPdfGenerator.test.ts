@@ -18,6 +18,7 @@ function entry(
     eventDistance: distance,
     eventStroke: stroke,
     rank,
+    athleteId: `${lastName}-${firstName}`,
     lastName,
     firstName,
     ageGroup: '10&U',
@@ -97,6 +98,17 @@ describe('generateTopTimesPdf', () => {
       entry('50', 'Freestyle', 3, 'Skywalker', 'Luke'),
     ];
     expect(await pageCount(sameEvent)).toBe(1);
+  });
+
+  it('renders a swim-up entry without error (annotation stays WinAnsi-safe)', async () => {
+    // Helvetica can't encode arrows; the "(swim up)" note must be ASCII.
+    const swimUp: TopTimeEntry = {
+      ...entry('50', 'Freestyle', 1, 'Kenobi', 'Obi-Wan', '28.00S', 'Jedi Trials 2025'),
+      swamUpFrom: 'Boys 9-10',
+    };
+    const bytes = await generateTopTimesPdf([swimUp]);
+    expect(new TextDecoder().decode(bytes.slice(0, 5))).toBe('%PDF-');
+    expect(await pageCount([swimUp])).toBe(1);
   });
 
   it('keeps MCSL "07-08" and "6 & Under" entries under one 8 & Under heading', async () => {
