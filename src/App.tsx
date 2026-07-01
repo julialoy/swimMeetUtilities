@@ -62,6 +62,18 @@ export default function App() {
     });
   }
 
+  /** Removes a single uploaded PDF by its stable uid. */
+  function removePdf(uid: string) {
+    setUploadedPdfs(prev => prev.filter(p => p.uid !== uid));
+  }
+
+  /** Clears every uploaded PDF and resets the team/label selections — a full start-over. */
+  function clearAllPdfs() {
+    setUploadedPdfs([]);
+    setExcludedTeams(new Set());
+    setDeselectedIds(new Set());
+  }
+
   // ── Combine & Reorder derived view (recomputed each render) ─────────────────
   // Flatten every uploaded label into a selectable row with a stable id.
   const flatLabels = uploadedPdfs.flatMap(p =>
@@ -101,6 +113,15 @@ export default function App() {
       >
         Add PDFs…
       </button>
+      {uploadedPdfs.length > 0 && (
+        <button
+          onClick={clearAllPdfs}
+          disabled={combining}
+          style={{ marginLeft: '0.75rem', padding: '0.5rem 1rem', cursor: combining ? 'wait' : 'pointer' }}
+        >
+          Remove all ({uploadedPdfs.length})
+        </button>
+      )}
 
       {uploadedPdfs.length > 0 && (
         <ul style={{ marginTop: '1rem', fontSize: '0.9rem', lineHeight: 2 }}>
@@ -113,10 +134,12 @@ export default function App() {
                 </span>
               )}
               <button
-                onClick={() => setUploadedPdfs(prev => prev.filter(q => q.uid !== p.uid))}
-                style={{ marginLeft: '0.75rem', fontSize: '0.8rem', cursor: 'pointer' }}
+                onClick={() => removePdf(p.uid)}
+                aria-label={`Remove ${p.name}`}
+                title={`Remove ${p.name}`}
+                style={deleteBtn}
               >
-                Remove
+                ✕
               </button>
             </li>
           ))}
@@ -203,4 +226,10 @@ export default function App() {
 /** Small inline "All / None / Select all" action buttons. */
 const miniBtn: React.CSSProperties = {
   marginLeft: '0.5rem', fontSize: '0.8rem', fontWeight: 'normal', cursor: 'pointer',
+};
+
+/** Per-PDF delete icon button. */
+const deleteBtn: React.CSSProperties = {
+  marginLeft: '0.75rem', border: 'none', background: 'none', color: '#c00',
+  cursor: 'pointer', fontSize: '1rem', lineHeight: 1, padding: '0 0.25rem',
 };
