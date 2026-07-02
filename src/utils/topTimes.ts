@@ -125,6 +125,51 @@ export function formatSwimTime(result: string): string {
   return result.replace(/(\d)([A-Za-z]+)$/, '$1 $2');
 }
 
+// Stroke order for the per-athlete PDF view: IM first, then Free/Back/Breast/Fly.
+// Keyed by both full and abbreviated stroke names (like STROKE_ORDER).
+const ATHLETE_STROKE_ORDER: Readonly<Record<string, number>> = {
+  'Individual Medley': 0, IM: 0,
+  Freestyle: 1,          Free: 1,
+  Backstroke: 2,         Back: 2,
+  Breaststroke: 3,       Breast: 3,
+  Butterfly: 4,          Fly: 4,
+};
+
+/** One athlete and their top-time entries, for the per-athlete PDF layout. */
+export interface AthleteGroup {
+  athleteId: string;
+  lastName: string;
+  firstName: string;
+  entries: TopTimeEntry[];
+}
+
+/**
+ * Groups top-time entries by athlete, preserving the order athletes first appear
+ * in `entries` (so an already name-sorted list yields alphabetical athletes).
+ * Each athlete's events are ordered IM → Free → Back → Breast → Fly, then by
+ * ascending distance. Used by the per-athlete PDF layout.
+ */
+export function groupByAthlete(entries: TopTimeEntry[]): AthleteGroup[] {
+  const groups = new Map<string, AthleteGroup>();
+  for (const e of entries) {
+    let g = groups.get(e.athleteId);
+    if (!g) {
+      g = { athleteId: e.athleteId, lastName: e.lastName, firstName: e.firstName, entries: [] };
+      groups.set(e.athleteId, g);
+    }
+    g.entries.push(e);
+  }
+  for (const g of groups.values()) {
+    g.entries.sort((a, b) => {
+      const sa = ATHLETE_STROKE_ORDER[a.eventStroke] ?? 99;
+      const sb = ATHLETE_STROKE_ORDER[b.eventStroke] ?? 99;
+      if (sa !== sb) return sa - sb;
+      return (parseInt(a.eventDistance, 10) || 0) - (parseInt(b.eventDistance, 10) || 0);
+    });
+  }
+  return [...groups.values()];
+}
+
 // Age-group ladder per sex, using the display names from AGE_GROUP_INFO, ordered
 // youngest → oldest. Drives the valid "swim up" targets for an athlete.
 const AGE_LADDER: ReadonlyArray<{ display: string; sex: 'F' | 'M'; rank: number }> = [

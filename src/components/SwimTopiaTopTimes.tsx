@@ -40,7 +40,10 @@ export function SwimTopiaTopTimes() {
 
   async function handleDownloadPdf() {
     setGenerating(true);
-    const bytes = await generateTopTimesPdf(entries);
+    // Sorting primarily by athlete name switches the PDF to a per-athlete layout
+    // (bold name, events listed under it); otherwise it stays event-grouped.
+    const groupBy = sortOrder[0] === 'name' ? 'athlete' : 'event';
+    const bytes = await generateTopTimesPdf(entries, groupBy);
     const baseName = fileName.replace(/\.csv$/i, '');
     const url = URL.createObjectURL(new Blob([bytes.buffer as ArrayBuffer], { type: 'application/pdf' }));
     const a = document.createElement('a');

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { eventKey, extractMeetNames, formatEventTitle, formatSwimTime, getTopTimes, olderAgeGroups, sortTopTimes } from '../topTimes';
+import { eventKey, extractMeetNames, formatEventTitle, formatSwimTime, getTopTimes, groupByAthlete, olderAgeGroups, sortTopTimes } from '../topTimes';
 import type { SwimTopiaAthlete, TopTimeEntry } from '../../types';
 
 // ── Fixture helpers ───────────────────────────────────────────────────────────
@@ -334,6 +334,36 @@ describe('getTopTimes', () => {
     const entries = getTopTimes(ATHLETES, new Set([JEDI_TRIALS, BESPIN_CUP]), 3);
     const sky = entries.find(e => e.lastName === 'Skywalker' && e.eventStroke === 'Freestyle');
     expect(sky?.meetName).toBe(BESPIN_CUP);
+  });
+});
+
+// ── groupByAthlete ────────────────────────────────────────────────────────────
+
+describe('groupByAthlete', () => {
+  it('groups by athlete and orders events IM → Free → Back → Breast → Fly, then distance', () => {
+    const input = [
+      entry({ athleteId: '1', lastName: 'Solo', firstName: 'Han', eventDistance: '50',  eventStroke: 'Freestyle' }),
+      entry({ athleteId: '1', lastName: 'Solo', firstName: 'Han', eventDistance: '100', eventStroke: 'Individual Medley' }),
+      entry({ athleteId: '1', lastName: 'Solo', firstName: 'Han', eventDistance: '25',  eventStroke: 'Butterfly' }),
+      entry({ athleteId: '1', lastName: 'Solo', firstName: 'Han', eventDistance: '25',  eventStroke: 'Freestyle' }),
+      entry({ athleteId: '2', lastName: 'Organa', firstName: 'Leia', eventDistance: '50', eventStroke: 'Backstroke' }),
+    ];
+    const groups = groupByAthlete(input);
+    expect(groups.map(g => g.athleteId)).toEqual(['1', '2']);
+    expect(groups[0].entries.map(e => `${e.eventDistance} ${e.eventStroke}`)).toEqual([
+      '100 Individual Medley',
+      '25 Freestyle',
+      '50 Freestyle',
+      '25 Butterfly',
+    ]);
+  });
+
+  it('preserves the incoming athlete order', () => {
+    const input = [
+      entry({ athleteId: 'z', lastName: 'Zed',    firstName: 'A', eventDistance: '50', eventStroke: 'Freestyle' }),
+      entry({ athleteId: 'a', lastName: 'Ackbar', firstName: 'B', eventDistance: '50', eventStroke: 'Freestyle' }),
+    ];
+    expect(groupByAthlete(input).map(g => g.athleteId)).toEqual(['z', 'a']);
   });
 });
 
