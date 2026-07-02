@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { parseSwimTopiaReportCard } from '../parsers/swimTopiaParser';
-import { ageGroupDisplay, eventKey, extractMeetNames, formatEventTitle, formatSwimTime, getTopTimes, olderAgeGroups, sortTopTimes, topTimeKey, type TopTimesSortKey, type TopTimesSortOrder } from '../utils/topTimes';
+import { ageGroupDisplay, eventKey, extractMeetNames, formatEventTitle, formatImprovement, formatSwimTime, getTopTimes, olderAgeGroups, sortTopTimes, topTimeKey, type TopTimesSortKey, type TopTimesSortOrder } from '../utils/topTimes';
 import type { TopTimeEntry } from '../types';
 import { generateTopTimesPdf } from '../generators/topTimesPdfGenerator';
 import type { SwimTopiaReportCard } from '../types';
@@ -16,6 +16,9 @@ export function SwimTopiaTopTimes() {
   const [fileName, setFileName] = useState('');
   // Manually-flagged swim-ups: entry key → older age-group display name.
   const [swimUps, setSwimUps] = useState<Map<string, string>>(new Map());
+  // Whether the by-athlete PDF shows each event's rank (only applies when
+  // sorting primarily by athlete name).
+  const [showRank, setShowRank] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function handleFile(file: File) {
@@ -40,7 +43,10 @@ export function SwimTopiaTopTimes() {
 
   async function handleDownloadPdf() {
     setGenerating(true);
-    const bytes = await generateTopTimesPdf(entries);
+    // Sorting primarily by athlete name switches the PDF to a per-athlete layout
+    // (bold name, events listed under it); otherwise it stays event-grouped.
+    const groupBy = sortOrder[0] === 'name' ? 'athlete' : 'event';
+    const bytes = await generateTopTimesPdf(entries, groupBy, showRank);
     const baseName = fileName.replace(/\.csv$/i, '');
     const url = URL.createObjectURL(new Blob([bytes.buffer as ArrayBuffer], { type: 'application/pdf' }));
     const a = document.createElement('a');
@@ -205,6 +211,12 @@ export function SwimTopiaTopTimes() {
                   >
                     {generating ? 'Generating…' : 'Download PDF'}
                   </button>
+                  {sortOrder[0] === 'name' && (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.85rem', color: '#555', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={showRank} onChange={e => setShowRank(e.target.checked)} />
+                      Show event rank in PDF
+                    </label>
+                  )}
                 </div>
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '0.85rem' }}>
@@ -228,7 +240,12 @@ export function SwimTopiaTopTimes() {
                               {e.lastName}, {e.firstName}
                               {e.swamUpFrom && <span style={{ color: '#a67c00' }}> (swim up)</span>}
                             </td>
-                            <td style={{ ...tdStyle, fontVariantNumeric: 'tabular-nums' }}>{formatSwimTime(e.result)}</td>
+                            <td style={{ ...tdStyle, fontVariantNumeric: 'tabular-nums' }}>
+                              {formatSwimTime(e.result)}
+                              {e.improvementSec != null && (
+                                <span style={{ color: e.improvementSec > 0 ? '#c00' : '#2e7d32' }}> ({formatImprovement(e.improvementSec)})</span>
+                              )}
+                            </td>
                             <td style={tdStyle}>{e.meetName}</td>
                             <td style={tdStyle}>{e.date}</td>
                             <td style={tdStyle}>

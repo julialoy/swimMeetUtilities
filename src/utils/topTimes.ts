@@ -125,6 +125,64 @@ export function formatSwimTime(result: string): string {
   return result.replace(/(\d)([A-Za-z]+)$/, '$1 $2');
 }
 
+/** Formats an improvement delta (seconds) with an explicit sign: -0.35 → "-0.35", 0.2 → "+0.20". */
+export function formatImprovement(sec: number): string {
+  return `${sec > 0 ? '+' : ''}${sec.toFixed(2)}`;
+}
+
+/** Parses a SwimTopia meet date ("MM/DD/YY" or "MM/DD/YYYY") to epoch ms; 0 if unparseable. */
+function meetDateMs(d: string): number {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/.exec(d.trim());
+  if (!m) { const t = Date.parse(d); return Number.isNaN(t) ? 0 : t; }
+  const year = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]);
+  return new Date(year, Number(m[1]) - 1, Number(m[2])).getTime();
+}
+
+// Stroke order for the per-athlete PDF view: IM first, then Free/Back/Breast/Fly.
+// Keyed by both full and abbreviated stroke names (like STROKE_ORDER).
+const ATHLETE_STROKE_ORDER: Readonly<Record<string, number>> = {
+  'Individual Medley': 0, IM: 0,
+  Freestyle: 1,          Free: 1,
+  Backstroke: 2,         Back: 2,
+  Breaststroke: 3,       Breast: 3,
+  Butterfly: 4,          Fly: 4,
+};
+
+/** One athlete and their top-time entries, for the per-athlete PDF layout. */
+export interface AthleteGroup {
+  athleteId: string;
+  lastName: string;
+  firstName: string;
+  entries: TopTimeEntry[];
+}
+
+/**
+ * Groups top-time entries by athlete, preserving the order athletes first appear
+ * in `entries` (so an already name-sorted list yields alphabetical athletes).
+ * Each athlete's events are ordered IM → Free → Back → Breast → Fly, then by
+ * ascending distance. Used by the per-athlete PDF layout.
+ */
+export function groupByAthlete(entries: TopTimeEntry[]): AthleteGroup[] {
+  const groups = new Map<string, AthleteGroup>();
+  for (const e of entries) {
+    let g = groups.get(e.athleteId);
+    if (!g) {
+      g = { athleteId: e.athleteId, lastName: e.lastName, firstName: e.firstName, entries: [] };
+      groups.set(e.athleteId, g);
+    }
+    g.entries.push(e);
+  }
+  for (const g of groups.values()) {
+    g.entries.sort((a, b) => {
+      const sa = ATHLETE_STROKE_ORDER[a.eventStroke] ?? 99;
+      const sb = ATHLETE_STROKE_ORDER[b.eventStroke] ?? 99;
+      if (sa !== sb) return sa - sb;
+      return (parseInt(a.eventDistance, 10) || 0) - (parseInt(b.eventDistance, 10) || 0);
+    });
+  }
+  return [...groups.values()];
+}
+
 // Age-group ladder per sex, using the display names from AGE_GROUP_INFO, ordered
 // youngest → oldest. Drives the valid "swim up" targets for an athlete.
 const AGE_LADDER: ReadonlyArray<{ display: string; sex: 'F' | 'M'; rank: number }> = [
@@ -208,6 +266,22 @@ export function getTopTimes(
 
   for (const athlete of athletes) {
     for (const event of athlete.events) {
+      // Displayed swim = the athlete's best across SELECTED meets for this event.
+      const selected = event.meetResults.filter(mr => selectedMeets.has(mr.meetName) && mr.resultSec > 0);
+      if (selected.length === 0) continue;
+      let displayed = selected[0];
+      for (const s of selected) if (s.resultSec < displayed.resultSec) displayed = s;
+
+      // Improvement vs the swimmer's best time in this event dated strictly
+      // before the displayed swim, across their FULL history (so a faster earlier
+      // swim — even in a deselected meet — surfaces as a positive/added delta).
+      const displayedDate = meetDateMs(displayed.date);
+      let priorBest = Infinity;
+      for (const mr of event.meetResults) {
+        if (mr.resultSec > 0 && meetDateMs(mr.date) < displayedDate && mr.resultSec < priorBest) priorBest = mr.resultSec;
+      }
+      const improvementSec = priorBest === Infinity ? undefined : Number((displayed.resultSec - priorBest).toFixed(2));
+
       // A swim-up moves this swim into the older group's event; convert the
       // chosen display name back to a canonical age group so it groups, sorts,
       // and titles exactly like native swimmers of that group.
@@ -219,26 +293,19 @@ export function getTopTimes(
       if (!byEvent.has(key)) {
         byEvent.set(key, { distance: event.eventDistance, stroke: event.eventStroke, best: new Map() });
       }
-      const slot = byEvent.get(key)!;
-
-      for (const mr of event.meetResults) {
-        if (!selectedMeets.has(mr.meetName) || mr.resultSec <= 0) continue;
-        const existing = slot.best.get(athlete.athleteId);
-        if (!existing || mr.resultSec < existing.resultSec) {
-          slot.best.set(athlete.athleteId, {
-            athleteId: athlete.athleteId,
-            lastName: athlete.lastName,
-            firstName: athlete.firstName,
-            ageGroup: effectiveAgeGroup,
-            age: athlete.age,
-            result: mr.result,
-            resultSec: mr.resultSec,
-            meetName: mr.meetName,
-            date: mr.date,
-            swamUpFrom,
-          });
-        }
-      }
+      byEvent.get(key)!.best.set(athlete.athleteId, {
+        athleteId: athlete.athleteId,
+        lastName: athlete.lastName,
+        firstName: athlete.firstName,
+        ageGroup: effectiveAgeGroup,
+        age: athlete.age,
+        result: displayed.result,
+        resultSec: displayed.resultSec,
+        meetName: displayed.meetName,
+        date: displayed.date,
+        swamUpFrom,
+        improvementSec,
+      });
     }
   }
 

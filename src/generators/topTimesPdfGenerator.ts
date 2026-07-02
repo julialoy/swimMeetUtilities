@@ -1,6 +1,6 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import type { TopTimeEntry } from '../types';
-import { eventKey, formatEventTitle, formatSwimTime } from '../utils/topTimes';
+import { eventKey, formatEventTitle, formatImprovement, formatSwimTime, groupByAthlete } from '../utils/topTimes';
 
 // ── Page constants (US Letter) ────────────────────────────────────────────────
 
@@ -21,32 +21,55 @@ const GROUP_GAP      = 10;  // extra gap inserted between event groups
 
 // ── Column x-positions (content width = 612 − 72 = 540 pts) ─────────────────
 // Rank  :  25 pts  →  handles "1." – "50."
-// Name  : 200 pts  →  handles hyphenated names (e.g. "Fett-Wren, Paz")
-// Time  :  70 pts  →  handles "1:30.72S"
-// Meet  : 245 pts  →  remaining width
+// Name  : 189 pts  →  handles hyphenated names (e.g. "Fett-Wren, Paz")
+// Time  : 105 pts  →  handles "1:30.72 S (-12.34)" (time + improvement delta)
+// Meet  : 221 pts  →  remaining width
 
 const COL_RANK = MARGIN_X;        //  36
 const COL_NAME = MARGIN_X + 25;   //  61
-const COL_TIME = MARGIN_X + 225;  // 261
-const COL_MEET = MARGIN_X + 295;  // 331
+const COL_TIME = MARGIN_X + 214;  // 250
+const COL_MEET = MARGIN_X + 319;  // 355
+
+/** Time with its improvement delta appended when present, e.g. "31.50 S (-2.60)". */
+function timeText(e: TopTimeEntry): string {
+  return `${formatSwimTime(e.result)}${e.improvementSec != null ? ` (${formatImprovement(e.improvementSec)})` : ''}`;
+}
+
+/** Formats a rank as an English ordinal: 1 → "1st", 2 → "2nd", 11 → "11th". */
+function ordinal(n: number): string {
+  const rem100 = n % 100;
+  if (rem100 >= 11 && rem100 <= 13) return `${n}th`;
+  switch (n % 10) {
+    case 1:  return `${n}st`;
+    case 2:  return `${n}nd`;
+    case 3:  return `${n}rd`;
+    default: return `${n}th`;
+  }
+}
 
 // ── Generator ─────────────────────────────────────────────────────────────────
 
 /**
  * Generates a top-times report PDF from a sorted list of `TopTimeEntry` values.
  *
- * Entries should arrive pre-sorted with `event` as the primary key (e.g. via
- * `sortTopTimes(entries, ['event', 'rank', 'name'])`) so that each event's rows
- * are contiguous and ordered fastest-first. Event boundaries are detected from
- * `eventKey`; a bold heading is written at each boundary.
+ * `groupBy` controls the layout:
+ * - `'event'` (default): a bold event heading per event, then its rows
+ *   `rank · "Last, First" · time · meet`. Entries should arrive pre-sorted with
+ *   `event` as the primary key so each event's rows are contiguous.
+ * - `'athlete'`: a bold athlete-name heading per athlete, then their events
+ *   `event title — <rank> · time · meet`, ordered IM → Free → Back → Breast →
+ *   Fly. Used when the report is sorted primarily by athlete name. `showRank`
+ *   toggles the ` — <rank>` (ignored in event mode, which always numbers rows).
  *
- * Each athlete row contains: rank · "Last, First" · time · meet name.
- *
- * Pages are US Letter (612 × 792 pts) with 36 pt margins. A new page is
- * opened whenever the next heading + at least one row, or a lone row, would
- * fall below the bottom margin.
+ * Pages are US Letter (612 × 792 pts) with 36 pt margins. A new page is opened
+ * whenever the next heading + at least one row, or a lone row, would fall below
+ * the bottom margin.
  */
-export async function generateTopTimesPdf(entries: TopTimeEntry[]): Promise<Uint8Array> {
+export async function generateTopTimesPdf(
+  entries: TopTimeEntry[],
+  groupBy: 'event' | 'athlete' = 'event',
+  showRank = true,
+): Promise<Uint8Array> {
   const doc         = await PDFDocument.create();
   const boldFont    = await doc.embedFont(StandardFonts.HelveticaBold);
   const regularFont = await doc.embedFont(StandardFonts.Helvetica);
@@ -63,62 +86,52 @@ export async function generateTopTimesPdf(entries: TopTimeEntry[]): Promise<Uint
     }
   }
 
-  let currentEventKey = '';
+  function heading(text: string, isFirst: boolean) {
+    if (!isFirst) y -= GROUP_GAP;
+    ensureSpace(HEADER_LEADING + ROW_LEADING);
+    page.drawText(text, { x: MARGIN_X, y, font: boldFont, size: HEADER_SIZE, color: rgb(0, 0, 0) });
+    y -= HEADER_LEADING;
+  }
 
+  function cell(text: string, x: number, color = rgb(0, 0, 0)) {
+    page.drawText(text, { x, y, font: regularFont, size: ROW_SIZE, color });
+  }
+
+  if (groupBy === 'athlete') {
+    // Bold athlete name, then their events (IM → Free → Back → Breast → Fly).
+    let first = true;
+    for (const group of groupByAthlete(entries)) {
+      heading(`${group.lastName}, ${group.firstName}`, first);
+      first = false;
+      for (const entry of group.entries) {
+        ensureSpace(ROW_LEADING);
+        // Event title, then (optionally) the swimmer's placing, then swim-up mark.
+        const title = formatEventTitle(entry.ageGroup, entry.eventDistance, entry.eventStroke);
+        const rankText = showRank ? ` — ${ordinal(entry.rank)}` : '';
+        cell(`${title}${rankText}${entry.swamUpFrom ? ' (swim up)' : ''}`, COL_NAME);
+        cell(timeText(entry), COL_TIME);
+        cell(entry.meetName, COL_MEET);
+        y -= ROW_LEADING;
+      }
+    }
+    return doc.save({ addDefaultPage: false });
+  }
+
+  // Default: bold event heading, then its ranked swimmer rows.
+  let currentEventKey = '';
   for (const entry of entries) {
     const key = eventKey(entry.ageGroup, entry.eventDistance, entry.eventStroke);
-
     if (key !== currentEventKey) {
-      if (currentEventKey !== '') y -= GROUP_GAP;
-      ensureSpace(HEADER_LEADING + ROW_LEADING);
-
-      page.drawText(formatEventTitle(entry.ageGroup, entry.eventDistance, entry.eventStroke), {
-        x:    MARGIN_X,
-        y,
-        font: boldFont,
-        size: HEADER_SIZE,
-        color: rgb(0, 0, 0),
-      });
-      y -= HEADER_LEADING;
+      heading(formatEventTitle(entry.ageGroup, entry.eventDistance, entry.eventStroke), currentEventKey === '');
       currentEventKey = key;
     }
 
     ensureSpace(ROW_LEADING);
-
-    page.drawText(`${entry.rank}.`, {
-      x:    COL_RANK,
-      y,
-      font: regularFont,
-      size: ROW_SIZE,
-      color: rgb(0.45, 0.45, 0.45),
-    });
-
-    // A swim-up entry has been moved into the older group's event; mark it
-    // "(swim up)" after the name.
-    page.drawText(`${entry.lastName}, ${entry.firstName}${entry.swamUpFrom ? ' (swim up)' : ''}`, {
-      x:    COL_NAME,
-      y,
-      font: regularFont,
-      size: ROW_SIZE,
-      color: rgb(0, 0, 0),
-    });
-
-    page.drawText(formatSwimTime(entry.result), {
-      x:    COL_TIME,
-      y,
-      font: regularFont,
-      size: ROW_SIZE,
-      color: rgb(0, 0, 0),
-    });
-
-    page.drawText(entry.meetName, {
-      x:    COL_MEET,
-      y,
-      font: regularFont,
-      size: ROW_SIZE,
-      color: rgb(0, 0, 0),
-    });
-
+    cell(`${entry.rank}.`, COL_RANK, rgb(0.45, 0.45, 0.45));
+    // A swim-up entry has been moved into the older group's event; mark it "(swim up)".
+    cell(`${entry.lastName}, ${entry.firstName}${entry.swamUpFrom ? ' (swim up)' : ''}`, COL_NAME);
+    cell(timeText(entry), COL_TIME);
+    cell(entry.meetName, COL_MEET);
     y -= ROW_LEADING;
   }
 

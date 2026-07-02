@@ -232,6 +232,13 @@ export interface TopTimeEntry {
   meetName: string;
   date: string;
   /**
+   * Change (in seconds) of the displayed time vs the swimmer's best time in this
+   * event dated strictly before it (across their full meet history): negative =
+   * dropped time / new best, positive = slower than a prior best. Undefined when
+   * there is no earlier swim to compare against.
+   */
+  improvementSec?: number;
+  /**
    * Manually-flagged swim-up. When set, this entry has been MOVED into an older
    * age group's event (its `ageGroup` is the older group it swam up into) and
    * this holds the display name of the athlete's own/original group it swam up

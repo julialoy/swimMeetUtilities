@@ -111,6 +111,19 @@ describe('generateTopTimesPdf', () => {
     expect(await pageCount([swimUp])).toBe(1);
   });
 
+  it('renders the per-athlete layout (groupBy = "athlete") without error', async () => {
+    const bytes = await generateTopTimesPdf(SAMPLE, 'athlete');
+    expect(new TextDecoder().decode(bytes.slice(0, 5))).toBe('%PDF-');
+    // SAMPLE has three distinct athletes, one event each → one page.
+    expect((await PDFDocument.load(bytes)).getPageCount()).toBe(1);
+  });
+
+  it('renders the per-athlete layout with rank hidden (showRank = false)', async () => {
+    const bytes = await generateTopTimesPdf(SAMPLE, 'athlete', false);
+    expect(new TextDecoder().decode(bytes.slice(0, 5))).toBe('%PDF-');
+    expect((await PDFDocument.load(bytes)).getPageCount()).toBe(1);
+  });
+
   it('keeps MCSL "07-08" and "6 & Under" entries under one 8 & Under heading', async () => {
     // 40 rows alternating between the two aliased sub-groups, same event.
     // One merged heading: 18 + 40×13 = 538 pts → 1 page.
