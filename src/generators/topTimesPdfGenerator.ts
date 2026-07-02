@@ -1,6 +1,6 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import type { TopTimeEntry } from '../types';
-import { eventKey, formatEventTitle, formatSwimTime, groupByAthlete } from '../utils/topTimes';
+import { eventKey, formatEventTitle, formatImprovement, formatSwimTime, groupByAthlete } from '../utils/topTimes';
 
 // ── Page constants (US Letter) ────────────────────────────────────────────────
 
@@ -21,14 +21,19 @@ const GROUP_GAP      = 10;  // extra gap inserted between event groups
 
 // ── Column x-positions (content width = 612 − 72 = 540 pts) ─────────────────
 // Rank  :  25 pts  →  handles "1." – "50."
-// Name  : 200 pts  →  handles hyphenated names (e.g. "Fett-Wren, Paz")
-// Time  :  70 pts  →  handles "1:30.72S"
-// Meet  : 245 pts  →  remaining width
+// Name  : 189 pts  →  handles hyphenated names (e.g. "Fett-Wren, Paz")
+// Time  : 105 pts  →  handles "1:30.72 S (-12.34)" (time + improvement delta)
+// Meet  : 221 pts  →  remaining width
 
 const COL_RANK = MARGIN_X;        //  36
 const COL_NAME = MARGIN_X + 25;   //  61
-const COL_TIME = MARGIN_X + 225;  // 261
-const COL_MEET = MARGIN_X + 295;  // 331
+const COL_TIME = MARGIN_X + 214;  // 250
+const COL_MEET = MARGIN_X + 319;  // 355
+
+/** Time with its improvement delta appended when present, e.g. "31.50 S (-2.60)". */
+function timeText(e: TopTimeEntry): string {
+  return `${formatSwimTime(e.result)}${e.improvementSec != null ? ` (${formatImprovement(e.improvementSec)})` : ''}`;
+}
 
 /** Formats a rank as an English ordinal: 1 → "1st", 2 → "2nd", 11 → "11th". */
 function ordinal(n: number): string {
@@ -101,7 +106,7 @@ export async function generateTopTimesPdf(
         // Event title, then the swimmer's placing in that event, then swim-up mark.
         const title = formatEventTitle(entry.ageGroup, entry.eventDistance, entry.eventStroke);
         cell(`${title} — ${ordinal(entry.rank)}${entry.swamUpFrom ? ' (swim up)' : ''}`, COL_NAME);
-        cell(formatSwimTime(entry.result), COL_TIME);
+        cell(timeText(entry), COL_TIME);
         cell(entry.meetName, COL_MEET);
         y -= ROW_LEADING;
       }
@@ -122,7 +127,7 @@ export async function generateTopTimesPdf(
     cell(`${entry.rank}.`, COL_RANK, rgb(0.45, 0.45, 0.45));
     // A swim-up entry has been moved into the older group's event; mark it "(swim up)".
     cell(`${entry.lastName}, ${entry.firstName}${entry.swamUpFrom ? ' (swim up)' : ''}`, COL_NAME);
-    cell(formatSwimTime(entry.result), COL_TIME);
+    cell(timeText(entry), COL_TIME);
     cell(entry.meetName, COL_MEET);
     y -= ROW_LEADING;
   }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { eventKey, extractMeetNames, formatEventTitle, formatSwimTime, getTopTimes, groupByAthlete, olderAgeGroups, sortTopTimes } from '../topTimes';
+import { eventKey, extractMeetNames, formatEventTitle, formatImprovement, formatSwimTime, getTopTimes, groupByAthlete, olderAgeGroups, sortTopTimes } from '../topTimes';
 import type { SwimTopiaAthlete, TopTimeEntry } from '../../types';
 
 // ── Fixture helpers ───────────────────────────────────────────────────────────
@@ -334,6 +334,51 @@ describe('getTopTimes', () => {
     const entries = getTopTimes(ATHLETES, new Set([JEDI_TRIALS, BESPIN_CUP]), 3);
     const sky = entries.find(e => e.lastName === 'Skywalker' && e.eventStroke === 'Freestyle');
     expect(sky?.meetName).toBe(BESPIN_CUP);
+  });
+});
+
+// ── formatImprovement ─────────────────────────────────────────────────────────
+
+describe('formatImprovement', () => {
+  it('signs a dropped time as negative', () => {
+    expect(formatImprovement(-0.35)).toBe('-0.35');
+  });
+  it('signs an added time as positive', () => {
+    expect(formatImprovement(0.2)).toBe('+0.20');
+  });
+  it('formats zero without a sign', () => {
+    expect(formatImprovement(0)).toBe('0.00');
+  });
+});
+
+// ── getTopTimes — improvement delta ───────────────────────────────────────────
+
+describe('getTopTimes — improvement delta', () => {
+  it('reports a negative delta when the displayed swim beat an earlier one', () => {
+    const a = [makeAthlete('1', 'Solo', 'Han', '9-10 boys', [makeEvent('50', 'Freestyle', [
+      { meetName: JEDI_TRIALS, resultSec: 32.0, result: '32.00S', date: '06/14/25' },
+      { meetName: BESPIN_CUP,  resultSec: 30.0, result: '30.00S', date: '06/21/25' },
+    ])])];
+    const entries = getTopTimes(a, new Set([JEDI_TRIALS, BESPIN_CUP]), 0);
+    expect(entries[0].result).toBe('30.00S');
+    expect(entries[0].improvementSec).toBe(-2);
+  });
+
+  it('reports a positive delta when an earlier (deselected) swim was faster', () => {
+    const a = [makeAthlete('1', 'Solo', 'Han', '9-10 boys', [makeEvent('50', 'Freestyle', [
+      { meetName: CORUSCANT,  resultSec: 29.0, result: '29.00S', date: '06/07/25' }, // faster, earlier, NOT selected
+      { meetName: BESPIN_CUP, resultSec: 31.0, result: '31.00S', date: '06/21/25' }, // displayed
+    ])])];
+    const entries = getTopTimes(a, new Set([BESPIN_CUP]), 0);
+    expect(entries[0].result).toBe('31.00S');
+    expect(entries[0].improvementSec).toBe(2);
+  });
+
+  it('leaves improvementSec undefined when there is no earlier swim', () => {
+    const a = [makeAthlete('1', 'Solo', 'Han', '9-10 boys', [makeEvent('50', 'Freestyle', [
+      { meetName: BESPIN_CUP, resultSec: 31.0, result: '31.00S', date: '06/21/25' },
+    ])])];
+    expect(getTopTimes(a, new Set([BESPIN_CUP]), 0)[0].improvementSec).toBeUndefined();
   });
 });
 
