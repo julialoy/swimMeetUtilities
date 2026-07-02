@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { parseSwimTopiaReportCard } from '../parsers/swimTopiaParser';
-import { ageGroupDisplay, eventKey, extractMeetNames, formatEventTitle, getTopTimes, olderAgeGroups, sortTopTimes, topTimeKey, type TopTimesSortKey, type TopTimesSortOrder } from '../utils/topTimes';
+import { ageGroupDisplay, eventKey, extractMeetNames, formatEventTitle, formatSwimTime, getTopTimes, olderAgeGroups, sortTopTimes, topTimeKey, type TopTimesSortKey, type TopTimesSortOrder } from '../utils/topTimes';
 import type { TopTimeEntry } from '../types';
 import { generateTopTimesPdf } from '../generators/topTimesPdfGenerator';
 import type { SwimTopiaReportCard } from '../types';
@@ -228,7 +228,7 @@ export function SwimTopiaTopTimes() {
                               {e.lastName}, {e.firstName}
                               {e.swamUpFrom && <span style={{ color: '#a67c00' }}> (swim up)</span>}
                             </td>
-                            <td style={{ ...tdStyle, fontVariantNumeric: 'tabular-nums' }}>{e.result}</td>
+                            <td style={{ ...tdStyle, fontVariantNumeric: 'tabular-nums' }}>{formatSwimTime(e.result)}</td>
                             <td style={tdStyle}>{e.meetName}</td>
                             <td style={tdStyle}>{e.date}</td>
                             <td style={tdStyle}>
