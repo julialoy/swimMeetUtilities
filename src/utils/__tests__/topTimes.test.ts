@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { eventKey, extractMeetNames, formatEventTitle, getTopTimes, olderAgeGroups, sortTopTimes } from '../topTimes';
+import { eventKey, extractMeetNames, formatEventTitle, formatSwimTime, getTopTimes, olderAgeGroups, sortTopTimes } from '../topTimes';
 import type { SwimTopiaAthlete, TopTimeEntry } from '../../types';
 
 // ── Fixture helpers ───────────────────────────────────────────────────────────
@@ -334,6 +334,26 @@ describe('getTopTimes', () => {
     const entries = getTopTimes(ATHLETES, new Set([JEDI_TRIALS, BESPIN_CUP]), 3);
     const sky = entries.find(e => e.lastName === 'Skywalker' && e.eventStroke === 'Freestyle');
     expect(sky?.meetName).toBe(BESPIN_CUP);
+  });
+});
+
+// ── formatSwimTime ────────────────────────────────────────────────────────────
+
+describe('formatSwimTime', () => {
+  it('adds a space before a trailing course designation', () => {
+    expect(formatSwimTime('19.99S')).toBe('19.99 S');
+  });
+
+  it('handles times over a minute', () => {
+    expect(formatSwimTime('1:07.69S')).toBe('1:07.69 S');
+  });
+
+  it('leaves a time without a trailing letter unchanged', () => {
+    expect(formatSwimTime('19.99')).toBe('19.99');
+  });
+
+  it('is idempotent when a space is already present', () => {
+    expect(formatSwimTime('19.99 S')).toBe('19.99 S');
   });
 });
 

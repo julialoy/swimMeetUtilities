@@ -1,6 +1,6 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import type { TopTimeEntry } from '../types';
-import { eventKey, formatEventTitle } from '../utils/topTimes';
+import { eventKey, formatEventTitle, formatSwimTime } from '../utils/topTimes';
 
 // ── Page constants (US Letter) ────────────────────────────────────────────────
 
@@ -103,7 +103,7 @@ export async function generateTopTimesPdf(entries: TopTimeEntry[]): Promise<Uint
       color: rgb(0, 0, 0),
     });
 
-    page.drawText(entry.result, {
+    page.drawText(formatSwimTime(entry.result), {
       x:    COL_TIME,
       y,
       font: regularFont,

@@ -116,6 +116,15 @@ export function formatEventTitle(ageGroup: string, distance: string, stroke: str
   return `${prefix} ${distance} ${strokeDisplay}`;
 }
 
+/**
+ * Inserts a space before a trailing course designation on a result time, e.g.
+ * "19.99S" → "19.99 S" and "1:07.69S" → "1:07.69 S". Leaves times without a
+ * trailing letter unchanged. Display-only; does not affect the parsed seconds.
+ */
+export function formatSwimTime(result: string): string {
+  return result.replace(/(\d)([A-Za-z]+)$/, '$1 $2');
+}
+
 // Age-group ladder per sex, using the display names from AGE_GROUP_INFO, ordered
 // youngest → oldest. Drives the valid "swim up" targets for an athlete.
 const AGE_LADDER: ReadonlyArray<{ display: string; sex: 'F' | 'M'; rank: number }> = [
