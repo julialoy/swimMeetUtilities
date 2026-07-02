@@ -219,6 +219,8 @@ export interface TopTimeEntry {
   eventStroke: string;
   /** 1-based rank by speed within this event (1 = fastest). */
   rank: number;
+  /** SwimTopia athlete id — stable key for per-entry UI state (e.g. swim-up flags). */
+  athleteId: string;
   lastName: string;
   firstName: string;
   ageGroup: string;
@@ -229,5 +231,13 @@ export interface TopTimeEntry {
   /** Meet where this best time was achieved. */
   meetName: string;
   date: string;
+  /**
+   * Manually-flagged swim-up. When set, this entry has been MOVED into an older
+   * age group's event (its `ageGroup` is the older group it swam up into) and
+   * this holds the display name of the athlete's own/original group it swam up
+   * FROM (e.g. "Boys 9-10"). SwimTopia's report card can't detect swim-ups, so
+   * the user flags them manually.
+   */
+  swamUpFrom?: string;
 }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { eventKey, extractMeetNames, formatEventTitle, getTopTimes, sortTopTimes } from '../topTimes';
+import { eventKey, extractMeetNames, formatEventTitle, getTopTimes, olderAgeGroups, sortTopTimes } from '../topTimes';
 import type { SwimTopiaAthlete, TopTimeEntry } from '../../types';
 
 // ── Fixture helpers ───────────────────────────────────────────────────────────
@@ -337,11 +337,89 @@ describe('getTopTimes', () => {
   });
 });
 
+// ── olderAgeGroups (swim-up targets) ──────────────────────────────────────────
+
+describe('olderAgeGroups', () => {
+  it('returns older same-sex groups for a boys group', () => {
+    expect(olderAgeGroups('9-10 boys')).toEqual(['Boys 11-12', 'Boys 13-14', 'Men 15-18']);
+  });
+
+  it('returns older same-sex groups for a girls group', () => {
+    expect(olderAgeGroups('9-10 girls')).toEqual(['Girls 11-12', 'Girls 13-14', 'Women 15-18']);
+  });
+
+  it('treats the gendered 8 & Under alias as the youngest bracket', () => {
+    expect(olderAgeGroups('7-8 boys')).toEqual(['Boys 9-10', 'Boys 11-12', 'Boys 13-14', 'Men 15-18']);
+  });
+
+  it('normalises leading zeros and case', () => {
+    expect(olderAgeGroups('09-10 Girls')).toEqual(['Girls 11-12', 'Girls 13-14', 'Women 15-18']);
+  });
+
+  it('returns an empty list for the oldest group', () => {
+    expect(olderAgeGroups('15-18 men')).toEqual([]);
+    expect(olderAgeGroups('15-18 women')).toEqual([]);
+  });
+
+  it('offers every group when the age group is unrecognised', () => {
+    expect(olderAgeGroups('Womp Rats')).toHaveLength(10);
+  });
+});
+
+// ── getTopTimes — swim-ups ────────────────────────────────────────────────────
+
+describe('getTopTimes — swim-ups', () => {
+  const MEETS = new Set([JEDI_TRIALS]);
+  const SU = [
+    makeAthlete('a', 'Young', 'Ann',  '9-10 girls',  [makeEvent('50', 'Freestyle', [{ meetName: JEDI_TRIALS, resultSec: 30.0, result: '30.00S' }])]),
+    makeAthlete('b', 'Older', 'Beth', '11-12 girls', [makeEvent('50', 'Freestyle', [{ meetName: JEDI_TRIALS, resultSec: 29.0, result: '29.00S' }])]),
+    makeAthlete('c', 'Older', 'Cara', '11-12 girls', [makeEvent('50', 'Freestyle', [{ meetName: JEDI_TRIALS, resultSec: 31.0, result: '31.00S' }])]),
+  ];
+
+  it('moves a flagged swimmer into the older event and re-ranks by time', () => {
+    const swimUps = new Map([['a|50|Freestyle', 'Girls 11-12']]);
+    const entries = getTopTimes(SU, MEETS, 0, swimUps);
+
+    // The athlete's own 9-10 event is now empty (she moved out, no one left).
+    expect(entries.filter(e => formatEventTitle(e.ageGroup, e.eventDistance, e.eventStroke) === 'Girls 9-10 50 Free')).toHaveLength(0);
+
+    // She's ranked among the 11-12 swimmers by time: Beth 29, Ann 30, Cara 31.
+    const eleven = entries
+      .filter(e => formatEventTitle(e.ageGroup, e.eventDistance, e.eventStroke) === 'Girls 11-12 50 Free')
+      .sort((x, y) => x.rank - y.rank);
+    expect(eleven.map(e => `${e.rank}:${e.firstName}`)).toEqual(['1:Beth', '2:Ann', '3:Cara']);
+
+    const ann = eleven.find(e => e.athleteId === 'a')!;
+    expect(ann.swamUpFrom).toBe('Girls 9-10');
+  });
+
+  it('keeps a swim-up entry even when it falls outside top N', () => {
+    const slow = [
+      makeAthlete('a', 'Young', 'Ann', '9-10 girls', [makeEvent('50', 'Freestyle', [{ meetName: JEDI_TRIALS, resultSec: 40.0, result: '40.00S' }])]),
+      SU[1], SU[2],
+    ];
+    const swimUps = new Map([['a|50|Freestyle', 'Girls 11-12']]);
+    const entries = getTopTimes(slow, MEETS, 1, swimUps);
+
+    // topN=1 keeps only Beth natively; Cara (rank 2) is cut, but the swim-up Ann (rank 3) stays.
+    expect(entries.some(e => e.athleteId === 'b')).toBe(true);
+    expect(entries.some(e => e.athleteId === 'c')).toBe(false);
+    const ann = entries.find(e => e.athleteId === 'a')!;
+    expect(ann.rank).toBe(3);
+    expect(ann.swamUpFrom).toBe('Girls 9-10');
+  });
+
+  it('leaves entries unflagged when no swim-ups are given', () => {
+    const entries = getTopTimes(SU, MEETS, 0);
+    expect(entries.every(e => e.swamUpFrom === undefined)).toBe(true);
+  });
+});
+
 // ── sortTopTimes ──────────────────────────────────────────────────────────────
 
 function entry(overrides: Partial<TopTimeEntry> & Pick<TopTimeEntry, 'eventDistance' | 'eventStroke' | 'lastName' | 'firstName'>): TopTimeEntry {
   return {
-    rank: 1, ageGroup: '9-10 boys', age: 10, result: '30.00S', resultSec: 30, meetName: JEDI_TRIALS, date: '06/14/25',
+    rank: 1, athleteId: 'a1', ageGroup: '9-10 boys', age: 10, result: '30.00S', resultSec: 30, meetName: JEDI_TRIALS, date: '06/14/25',
     ...overrides,
   };
 }
