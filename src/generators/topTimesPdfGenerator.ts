@@ -58,7 +58,8 @@ function ordinal(n: number): string {
  *   `event` as the primary key so each event's rows are contiguous.
  * - `'athlete'`: a bold athlete-name heading per athlete, then their events
  *   `event title — <rank> · time · meet`, ordered IM → Free → Back → Breast →
- *   Fly. Used when the report is sorted primarily by athlete name.
+ *   Fly. Used when the report is sorted primarily by athlete name. `showRank`
+ *   toggles the ` — <rank>` (ignored in event mode, which always numbers rows).
  *
  * Pages are US Letter (612 × 792 pts) with 36 pt margins. A new page is opened
  * whenever the next heading + at least one row, or a lone row, would fall below
@@ -67,6 +68,7 @@ function ordinal(n: number): string {
 export async function generateTopTimesPdf(
   entries: TopTimeEntry[],
   groupBy: 'event' | 'athlete' = 'event',
+  showRank = true,
 ): Promise<Uint8Array> {
   const doc         = await PDFDocument.create();
   const boldFont    = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -103,9 +105,10 @@ export async function generateTopTimesPdf(
       first = false;
       for (const entry of group.entries) {
         ensureSpace(ROW_LEADING);
-        // Event title, then the swimmer's placing in that event, then swim-up mark.
+        // Event title, then (optionally) the swimmer's placing, then swim-up mark.
         const title = formatEventTitle(entry.ageGroup, entry.eventDistance, entry.eventStroke);
-        cell(`${title} — ${ordinal(entry.rank)}${entry.swamUpFrom ? ' (swim up)' : ''}`, COL_NAME);
+        const rankText = showRank ? ` — ${ordinal(entry.rank)}` : '';
+        cell(`${title}${rankText}${entry.swamUpFrom ? ' (swim up)' : ''}`, COL_NAME);
         cell(timeText(entry), COL_TIME);
         cell(entry.meetName, COL_MEET);
         y -= ROW_LEADING;
